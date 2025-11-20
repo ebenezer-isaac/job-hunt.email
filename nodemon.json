@@ -1,0 +1,17 @@
+{
+  "watch": [
+    "src",
+    "instrumentation.ts",
+    "next.config.ts",
+    "postcss.config.mjs",
+    "tsconfig.json",
+    ".env.local"
+  ],
+  "ignore": [
+    ".next",
+    "node_modules"
+  ],
+  "ext": "ts,tsx,js,mjs,json",
+  "exec": "next dev",
+  "signal": "SIGTERM"
+}
