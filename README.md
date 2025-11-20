@@ -1,6 +1,6 @@
 # CV Customiser (Next.js + Firebase)
 
-AI assistant that builds job-ready CVs, cover letters, and cold emails from a single interface. The Next.js App Router stack (inside `next-migration/`) orchestrates Gemini prompts, LaTeX rendering, Firebase auth, Firestore session storage, and quota enforcement so the entire system can be deployed on a single VM.
+AI assistant that builds job-ready CVs, cover letters, and cold emails from a single interface. The Next.js App Router stack orchestrates Gemini prompts, LaTeX rendering, Firebase auth, Firestore session storage, and quota enforcement so the entire system can be deployed on a single VM.
 
 ## Table of Contents
 
@@ -28,7 +28,7 @@ AI assistant that builds job-ready CVs, cover letters, and cold emails from a si
 
 | Layer | Tech | Notes |
 | --- | --- | --- |
-| Web / API | Next.js 15 (App Router) | Lives in `next-migration/`; server actions power orchestration.
+| Web / API | Next.js 15 (App Router) | Server actions power orchestration.
 | Auth | Firebase Auth + secure cookies | Middleware injects UID/email headers and enforces allowlist.
 | Data | Firestore + Firebase Storage | Sessions, quotas, allowlist config, and artifacts.
 | AI | Google Gemini (Pro/Flash/Embeddings) + Apollo.io (optional) | Prompts live in `src/prompts.json`.
@@ -75,8 +75,8 @@ The generator expects two source documents before you ever click “Generate”:
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/ebenezer-isaac/cv-customiser.git
-cd cv-customiser/next-migration
+git clone https://github.com/ebenezer-isaac/job-hunt.email.git
+cd job-hunt.email
 ```
 
 ### 2. Install dependencies
@@ -207,8 +207,8 @@ Schedule this via cron/Task Scheduler in production.
    ```
 3. **Clone & install**:
    ```bash
-   git clone https://github.com/ebenezer-isaac/cv-customiser.git
-   cd cv-customiser/next-migration
+   git clone https://github.com/ebenezer-isaac/job-hunt.email.git
+   cd job-hunt.email
    npm ci
    ```
 4. **Add `.env.local`** (copy via SCP or secret manager).
@@ -216,7 +216,7 @@ Schedule this via cron/Task Scheduler in production.
 6. **Run under a process manager**:
    ```bash
    npm install -g pm2
-   pm2 start npm --name cv-customiser -- start
+   pm2 start npm --name job-hunt.email -- start
    pm2 save
    ```
 7. **Serve over HTTPS** using nginx/Cloud Load Balancer or a managed TLS endpoint.
@@ -232,19 +232,19 @@ Schedule this via cron/Task Scheduler in production.
 ## Directory Reference
 
 ```
-cv-customiser/
+job-hunt.email/
 ├── README.md                  # This file (root-level overview)
-└── next-migration/            # Next.js app router implementation
-    ├── src/
-    │   ├── app/               # App Router routes, API handlers, server actions
-    │   ├── components/        # UI building blocks
-    │   ├── hooks/             # Client hooks (`useChat`, quota subscriptions, etc.)
-    │   ├── lib/               # Auth, AI, logging, Firebase, quota, storage helpers
-    │   ├── middleware.ts      # Firebase auth + access-control gate
-    │   └── env.ts             # Zod-validated environment schema
-    ├── scripts/               # Maintenance tasks (export prompts, expire holds)
-    ├── source_files/          # CV/cover-letter/cold-email strategy corpora
-    └── public/                # Static assets served by Next.js
+├── src/
+│   ├── app/               # App Router routes, API handlers, server actions
+│   ├── components/        # UI building blocks
+│   ├── hooks/             # Client hooks (`useChat`, quota subscriptions,etc.)
+│   ├── lib/               # Auth, AI, logging, Firebase, quota, storage helpers
+│   ├── middleware.ts      # Firebase auth + access-control gate
+│   └── env.ts             # Zod-validated environment schema
+├── scripts/               # Maintenance tasks (export prompts, expire holds)
+├── source_files/          # CV/cover-letter/cold-email strategy corpora
+├── public/                # Static assets served by Next.js
+└── .env.local 
 ```
 
 ## Troubleshooting
