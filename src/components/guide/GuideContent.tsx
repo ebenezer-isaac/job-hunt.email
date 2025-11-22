@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import type { ReactNode } from "react";
 
 export function GuideContent() {
   const [activeTab, setActiveTab] = useState<'web' | 'local'>('web');
@@ -275,10 +276,8 @@ function LocalSetupGuide() {
         <Steps>
           <Step number="1" title="Clone the Repository">
             <p className="mb-2">Open your terminal and run:</p>
-            <CodeBlock>
-              git clone https://github.com/ebenezer-isaac/job-hunt.email.git{'\n'}
-              cd job-hunt.email
-            </CodeBlock>
+            <CodeBlock>{`git clone https://github.com/ebenezer-isaac/job-hunt.email.git
+cd job-hunt.email`}</CodeBlock>
           </Step>
           
           <Step number="2" title="Install Dependencies">
@@ -318,7 +317,7 @@ function LocalSetupGuide() {
           
           <Step number="6" title="Generate Security Keys">
             <p className="mb-2">Run this command twice to generate two random keys:</p>
-            <CodeBlock>node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&apos;base64&apos;))&quot;</CodeBlock>
+            <CodeBlock>{`node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`}</CodeBlock>
             <p className="mt-3 text-zinc-700">
               Use the first output for <code className="px-1 py-0.5 bg-zinc-100 rounded text-sm">ACCESS_CONTROL_INTERNAL_TOKEN</code>{' '}
               and the second for <code className="px-1 py-0.5 bg-zinc-100 rounded text-sm">FIREBASE_AUTH_COOKIE_SIGNATURE_KEYS</code>
@@ -391,7 +390,7 @@ function LocalSetupGuide() {
 interface SectionProps {
   title: string;
   icon: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 function Section({ title, icon, children }: SectionProps) {
@@ -406,14 +405,14 @@ function Section({ title, icon, children }: SectionProps) {
   );
 }
 
-function Steps({ children }: { children: React.ReactNode }) {
+function Steps({ children }: { children: ReactNode }) {
   return <div className="space-y-6">{children}</div>;
 }
 
 interface StepProps {
   number: string;
   title: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 function Step({ number, title, children }: StepProps) {
@@ -430,7 +429,7 @@ function Step({ number, title, children }: StepProps) {
   );
 }
 
-function Tip({ children }: { children: React.ReactNode }) {
+function Tip({ children }: { children: ReactNode }) {
   return (
     <div className="flex items-start gap-3 p-4 bg-zinc-50 rounded-lg border border-zinc-200">
       <span className="text-lg">💡</span>
@@ -457,7 +456,7 @@ interface PrerequisiteCardProps {
   title: string;
   link?: string;
   description: string;
-  children?: React.ReactNode;
+  children?: ReactNode;
 }
 
 function PrerequisiteCard({ title, link, description, children }: PrerequisiteCardProps) {
