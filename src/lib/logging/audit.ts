@@ -19,6 +19,7 @@ type ChatLogLevel = "info" | "success" | "error";
 
 type ScheduleChatLogInput = {
   sessionId: string;
+  id?: string;
   message: string;
   level?: ChatLogLevel;
   payload?: Record<string, unknown>;
@@ -35,6 +36,7 @@ export function scheduleChatLog(input: ScheduleChatLogInput): void {
   after(async () => {
     try {
       await sessionRepository.appendChatLog(input.sessionId, {
+        id: input.id,
         level: input.level ?? "info",
         message: input.message,
         payload: input.payload,

@@ -18,7 +18,7 @@ export function createOutreachTasks(client: ModelClient) {
         candidateInsights,
         contactIntelSummary: resolveContactIntel(contactIntelSummary),
       });
-      const result = await client.generateWithRetry(prompt, MODEL_TYPES.PRO);
+      const result = await client.generateWithRetry(prompt, MODEL_TYPES.THINKING);
       logger.info("Personalized cold email generated", { length: result.length });
       return result;
     },
@@ -33,7 +33,7 @@ export function createOutreachTasks(client: ModelClient) {
         candidateInsights,
         contactIntelSummary: resolveContactIntel(contactIntelSummary),
       });
-      const result = await client.generateWithRetry(prompt, MODEL_TYPES.PRO);
+      const result = await client.generateWithRetry(prompt, MODEL_TYPES.THINKING);
       logger.info("Generic cold email generated", { length: result.length });
       return result;
     },

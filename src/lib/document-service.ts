@@ -134,7 +134,16 @@ export class DocumentService {
           attempt,
           error: lastError?.message,
           stack: lastError?.stack,
+          texSourcePreview: texSource.slice(0, 1000)
         });
+        
+        try {
+            const failedTexPath = path.join(os.tmpdir(), `failed-cv-${Date.now()}.tex`);
+            await fs.writeFile(failedTexPath, texSource, "utf-8");
+            this.logger.error("Saved failed LaTeX source", { path: failedTexPath });
+        } catch (e) {
+            this.logger.error("Failed to save failed LaTeX source", { error: (e as Error).message });
+        }
       }
     }
 
@@ -225,6 +234,11 @@ export class DocumentService {
     await new Promise<void>((resolve, reject) => {
       const child = spawn(this.latexCmd, args, { cwd });
       const stderrChunks: Buffer[] = [];
+      const stdoutChunks: Buffer[] = [];
+
+      child.stdout.on("data", (chunk) => {
+        stdoutChunks.push(Buffer.from(chunk));
+      });
 
       child.stderr.on("data", (chunk) => {
         stderrChunks.push(Buffer.from(chunk));
@@ -238,18 +252,29 @@ export class DocumentService {
         });
         reject(error);
       });
-      child.on("close", (code) => {
+      child.on("close", async (code) => {
         if (code === 0) {
           this.logger.step("pdflatex pass succeeded", { pass });
           resolve();
         } else {
-          const error = Buffer.concat(stderrChunks).toString("utf-8");
+          const stderr = Buffer.concat(stderrChunks).toString("utf-8");
+          const stdout = Buffer.concat(stdoutChunks).toString("utf-8");
+          
+          let logContent = "";
+          try {
+             logContent = await fs.readFile(path.join(cwd, "main.log"), "utf-8");
+          } catch (e) {
+             logContent = "Could not read main.log";
+          }
+
           this.logger.error("pdflatex pass failed", {
             pass,
             code,
-            stderr: error,
+            stderr,
+            stdout: stdout.slice(-1000),
+            logContent: logContent.slice(-2000)
           });
-          reject(new Error(`pdflatex exited with code ${code}: ${error}`));
+          reject(new Error(`pdflatex exited with code ${code}. Log: ${logContent.slice(-1000)}`));
         }
       });
     });

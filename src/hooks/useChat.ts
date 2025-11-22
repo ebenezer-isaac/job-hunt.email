@@ -3,11 +3,13 @@
 import { useCallback, useRef } from "react";
 import { toast } from "sonner";
 import { createSessionAction } from "@/app/actions/create-session";
+import { appendLogAction } from "@/app/actions/append-log";
 import { processJobInputAction, type NormalizedJobInput } from "@/app/actions/process-job-input";
 import { useSessionStore } from "@/store/session-store";
 import { useStreamableValue, type GenerationArtifacts } from "@/hooks/useStreamableValue";
 import { REQUEST_ID_HEADER, setClientRequestId } from "@/lib/debug-logger";
 import { clientEnv } from "@/lib/env-client";
+import type { ChatMessageKind } from "@/types/session";
 
 export type ChatInput = {
   jobDescription: string;
@@ -155,10 +157,18 @@ export function useChat() {
         content: userContent,
         timestamp,
         isMarkdown: false,
-        metadata: { kind: "prompt" },
+        metadata: { kind: "prompt" as ChatMessageKind },
       };
 
       actions.appendChatMessage(sessionId, userMessage);
+
+      void appendLogAction({
+        sessionId,
+        id: userMessage.id,
+        message: userMessage.content,
+        level: "info",
+        kind: "prompt",
+      });
 
       const summaryParts = [
         normalized?.wasUrl
@@ -177,13 +187,23 @@ export function useChat() {
         summaryParts.push(`Contact → ${contactName}${contactTitle ? ` (${contactTitle})` : ""}`);
       }
 
-        actions.appendChatMessage(sessionId, {
-          id: createMessageId(sessionId, "system"),
-        role: "system",
+      const summaryMessage = {
+        id: createMessageId(sessionId, "system"),
+        role: "system" as const,
         content: summaryParts.join("\n"),
         timestamp: new Date().toISOString(),
+        level: "info" as const,
+        metadata: { kind: "summary" as ChatMessageKind },
+      };
+
+      actions.appendChatMessage(sessionId, summaryMessage);
+
+      void appendLogAction({
+        sessionId,
+        id: summaryMessage.id,
+        message: summaryMessage.content,
         level: "info",
-        metadata: { kind: "summary" },
+        kind: "summary",
       });
 
       const formData = new FormData();
@@ -241,7 +261,7 @@ export function useChat() {
             content: line,
             timestamp: new Date().toISOString(),
             level: deriveLevel(line),
-            metadata: { kind: "log" },
+            metadata: { kind: "log" as ChatMessageKind },
             mergeDisabled: true,
           });
         },
@@ -257,7 +277,7 @@ export function useChat() {
             content: buildArtifactSummary(artifacts),
             timestamp: new Date().toISOString(),
             level: "success",
-            metadata: { kind: "summary" },
+            metadata: { kind: "summary" as ChatMessageKind },
           });
           toast.success("Documents generated successfully");
         },
@@ -285,7 +305,7 @@ export function useChat() {
           content: `Generation failed: ${message}`,
           timestamp: new Date().toISOString(),
           level: "error",
-          metadata: { kind: "summary" },
+          metadata: { kind: "summary" as ChatMessageKind },
         });
       }
       toast.error(`Generation failed: ${message}`);

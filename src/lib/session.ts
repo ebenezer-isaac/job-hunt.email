@@ -10,6 +10,7 @@ export type SessionStatus =
   | "approved";
 
 export type ChatLogEntry = {
+  id?: string;
   timestamp: string;
   level: "info" | "success" | "error";
   message: string;
@@ -253,6 +254,9 @@ export class SessionRepository {
       }
 
       const sanitizedEntry = { ...entry, timestamp: new Date().toISOString() } as ChatLogEntry;
+      if (!sanitizedEntry.id) {
+        sanitizedEntry.id = randomUUID();
+      }
       if (sanitizedEntry.payload === undefined) {
         delete sanitizedEntry.payload;
       } else {

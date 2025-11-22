@@ -22,7 +22,7 @@ export function createDocumentTasks(client: ModelClient) {
         roleInsights,
         candidateInsights,
       });
-      const result = await client.generateWithRetry(prompt, MODEL_TYPES.PRO);
+      const result = await client.generateWithRetry(prompt, MODEL_TYPES.THINKING);
       logger.info("CV generation complete", { length: result.length });
       return result;
     },
@@ -41,7 +41,7 @@ export function createDocumentTasks(client: ModelClient) {
         targetPageCount: String(targetPageCount),
         jobDescription: input.jobDescription,
       });
-      const result = await client.generateWithRetry(prompt, MODEL_TYPES.PRO);
+      const result = await client.generateWithRetry(prompt, MODEL_TYPES.THINKING);
       logger.info("CV page count fix complete", { length: result.length });
       return result;
     },
@@ -61,7 +61,7 @@ export function createDocumentTasks(client: ModelClient) {
         roleInsights,
         candidateInsights,
       });
-      const result = await client.generateWithRetry(prompt, MODEL_TYPES.PRO);
+      const result = await client.generateWithRetry(prompt, MODEL_TYPES.THINKING);
       logger.info("Cover letter generation complete", { length: result.length });
       return result;
     },
@@ -76,7 +76,7 @@ export function createDocumentTasks(client: ModelClient) {
         content: input.content,
         feedback: input.feedback,
       });
-      const result = await client.generateWithRetry(prompt, MODEL_TYPES.PRO);
+      const result = await client.generateWithRetry(prompt, MODEL_TYPES.THINKING);
       logger.info("Content refinement complete", { length: result.length });
       return result;
     },

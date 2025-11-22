@@ -147,8 +147,16 @@ export function ChatView() {
             </button>
           </div>
           <div ref={containerRef} className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
-            {showWelcome ? <WelcomePanel /> : null}
-            {generatedDocuments ? <ArtifactsPanel /> : null}
+            {isGenerating ? (
+              <div className="flex h-full flex-col items-center justify-center gap-4">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-zinc-200 border-t-zinc-900" />
+                <p className="text-sm font-semibold text-zinc-500 animate-pulse">Generating documents...</p>
+              </div>
+            ) : showWelcome ? (
+              <WelcomePanel />
+            ) : generatedDocuments ? (
+              <ArtifactsPanel />
+            ) : null}
           </div>
       </section>
       <GenerationLogsPanel
@@ -306,10 +314,6 @@ function GenerationListItem({ generation, isExpanded, onToggle, isLatest, isGene
           <ReactMarkdown>{summaryContent}</ReactMarkdown>
         </div>
       ) : null}
-      <div className="mt-3 rounded-2xl border border-zinc-200 bg-white px-3 py-2">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Request</p>
-        <p className="mt-1 whitespace-pre-line text-sm text-zinc-800">{requestPreview}</p>
-      </div>
       <button
         type="button"
         onClick={onToggle}

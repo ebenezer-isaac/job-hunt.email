@@ -40,7 +40,12 @@ export function createJobIngestionTasks(client: ModelClient) {
       logger.step("Processing job URL", { url });
       const prompt = renderPrompt("processJobURL", { url });
       try {
-        const jobData = await client.generateJsonWithRetry<Record<string, unknown>>(prompt, MODEL_TYPES.FLASH);
+        const jobData = await client.generateJsonWithRetry<Record<string, unknown>>(
+          prompt,
+          MODEL_TYPES.FLASH,
+          // @ts-expect-error - googleSearch is not yet in the Tool type definition
+          [{ googleSearch: {} }]
+        );
         logger.info("Parsed job data from URL", { url });
         return jobData;
       } catch (error) {

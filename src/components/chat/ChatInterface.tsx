@@ -151,6 +151,12 @@ export function ChatInterface() {
     if (jobDescriptionRequired && !jobDescription.trim()) {
       return;
     }
+    const mainContent = document.getElementById("main-content");
+    if (mainContent) {
+      mainContent.scrollTo({ top: 0, behavior: "smooth" });
+    } else {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
     setRetryAvailable(false);
     const payload: ChatInput = {
       jobDescription,

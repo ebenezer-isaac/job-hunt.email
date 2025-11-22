@@ -58,7 +58,7 @@ export function ChatApp({ initialState, userId, userProfile, quota }: ChatAppPro
                   />
                 </div>
               </header>
-              <main className="flex-1 overflow-y-auto bg-zinc-50 p-6">
+              <main id="main-content" className="flex-1 overflow-y-auto bg-zinc-50 p-6">
                 {panel === 'chat' ? <ChatInterface /> : <SettingsPanel onClose={() => setPanel('chat')} />}
               </main>
             </div>

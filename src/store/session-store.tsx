@@ -78,6 +78,28 @@ function mergeChatHistories(serverHistory: ChatMessage[], existingHistory: ChatM
     mergedMap.set(message.id, message);
   }
   for (const message of serverHistory) {
+    // Check for content-based duplicates for logs where IDs might differ
+    // (Client generates random ID, Server generates timestamp-based ID)
+    const duplicateId = Array.from(mergedMap.values()).find((existing) => {
+      if (existing.id === message.id) return false; // ID match handled by map set
+      
+      // Only dedupe logs or system messages, not user prompts (unless exact match)
+      // User prompts should have exact ID match via appendLogAction
+      
+      const isLog = existing.metadata?.kind === "log" || message.metadata?.kind === "log";
+      if (!isLog) return false;
+
+      return (
+        existing.content === message.content &&
+        existing.role === message.role &&
+        existing.level === message.level &&
+        Math.abs(safeTimestamp(existing.timestamp) - safeTimestamp(message.timestamp)) < 10000 // 10s window
+      );
+    })?.id;
+
+    if (duplicateId) {
+      mergedMap.delete(duplicateId);
+    }
     mergedMap.set(message.id, message);
   }
   return Array.from(mergedMap.values()).sort((a, b) => safeTimestamp(a.timestamp) - safeTimestamp(b.timestamp));

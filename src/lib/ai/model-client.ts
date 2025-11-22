@@ -1,6 +1,6 @@
 import "server-only";
 
-import { GoogleGenerativeAI, type GenerationConfig, type GenerativeModel } from "@google/generative-ai";
+import { GoogleGenerativeAI, type GenerationConfig, type GenerativeModel, type Tool } from "@google/generative-ai";
 
 import { env } from "@/env";
 import { createDebugLogger } from "@/lib/debug-logger";
@@ -9,6 +9,7 @@ import { AIFailureError } from "@/lib/errors/ai-failure-error";
 export const MODEL_TYPES = {
   PRO: "pro",
   FLASH: "flash",
+  THINKING: "thinking",
 } as const;
 
 export type ModelType = (typeof MODEL_TYPES)[keyof typeof MODEL_TYPES];
@@ -24,7 +25,14 @@ export class ModelClient {
   private readonly logger = createDebugLogger("ai-model-client");
 
   private getModel(modelType: ModelType): GenerativeModel {
-    return modelType === MODEL_TYPES.FLASH ? this.flashModel : this.proModel;
+    switch (modelType) {
+      case MODEL_TYPES.FLASH:
+        return this.flashModel;
+      case MODEL_TYPES.THINKING:
+      case MODEL_TYPES.PRO:
+      default:
+        return this.proModel;
+    }
   }
 
   private createContents(prompt: string) {
@@ -52,11 +60,23 @@ export class ModelClient {
     prompt: string,
     modelType: ModelType,
     generationConfig?: GenerationConfig,
+    tools?: Tool[],
   ): Promise<string> {
     const model = this.getModel(modelType);
+    
+    // Gemini 3 Best Practices:
+    // 1. Use default temperature (1.0) for reasoning models
+    const config = { ...generationConfig };
+    
+    // Explicitly set thinking level for THINKING tasks, though Gemini 3 defaults to high/dynamic
+    if (modelType === MODEL_TYPES.THINKING) {
+       // thinking_level removed as it causes 400 Bad Request with current API
+    }
+
     const result = await model.generateContent({
       contents: this.createContents(prompt),
-      generationConfig,
+      generationConfig: config,
+      tools,
     });
     const response = await result.response;
     const text = response.text();
@@ -64,13 +84,13 @@ export class ModelClient {
     return text;
   }
 
-  async generateJsonWithRetry<T>(prompt: string, modelType: ModelType = MODEL_TYPES.PRO): Promise<T> {
+  async generateJsonWithRetry<T>(prompt: string, modelType: ModelType = MODEL_TYPES.PRO, tools?: Tool[]): Promise<T> {
     const generationConfig: JsonGenerationConfig = { responseMimeType: "application/json" };
 
     for (let attempt = 1; attempt <= this.maxRetries; attempt += 1) {
       try {
         this.logger.step("Sending JSON request", { modelType, attempt });
-        const rawText = await this.invokeModel(prompt, modelType, generationConfig);
+        const rawText = await this.invokeModel(prompt, modelType, generationConfig, tools);
         const cleaned = this.cleanJsonPayload(rawText);
         return JSON.parse(cleaned) as T;
       } catch (error) {
@@ -97,11 +117,11 @@ export class ModelClient {
     throw new AIFailureError("AI JSON service exhausted retries");
   }
 
-  async generateWithRetry(prompt: string, modelType: ModelType = MODEL_TYPES.PRO): Promise<string> {
+  async generateWithRetry(prompt: string, modelType: ModelType = MODEL_TYPES.PRO, tools?: Tool[]): Promise<string> {
     for (let attempt = 1; attempt <= this.maxRetries; attempt += 1) {
       try {
         this.logger.step("Sending text request", { modelType, attempt });
-        return await this.invokeModel(prompt, modelType);
+        return await this.invokeModel(prompt, modelType, undefined, tools);
       } catch (error) {
         this.logger.error("Text generation failed", {
           attempt,

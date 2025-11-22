@@ -272,12 +272,14 @@ function mapChatHistory(rawHistory: unknown[]): SerializableChatMessage[] {
   return rawHistory.map((entry, index) => {
     const record = entry as Record<string, unknown>;
     const timestampRaw = typeof record.timestamp === "string" ? record.timestamp : new Date().toISOString();
+    const id = typeof record.id === "string" ? record.id : `${timestampRaw}-${index}`;
     return {
-      id: `${timestampRaw}-${index}`,
+      id,
       role: "assistant",
       content: String(record.message ?? ""),
       timestamp: timestampRaw,
       level: (record.level as SerializableChatMessage["level"]) ?? "info",
+      metadata: (record.payload as Record<string, unknown>) ?? undefined,
     };
   });
 }

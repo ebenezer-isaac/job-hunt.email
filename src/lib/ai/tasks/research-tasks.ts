@@ -16,7 +16,12 @@ export function createResearchTasks(client: ModelClient) {
         reconStrategy: input.reconStrategy,
       });
       try {
-        const result = await client.generateJsonWithRetry<Record<string, unknown>>(prompt);
+        const result = await client.generateJsonWithRetry<Record<string, unknown>>(
+          prompt,
+          MODEL_TYPES.THINKING,
+          // @ts-expect-error - googleSearch is not yet in the Tool type definition
+          [{ googleSearch: {} }]
+        );
         logger.info("Company research complete", { companyName: input.companyName });
         return result;
       } catch (error) {

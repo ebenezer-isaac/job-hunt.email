@@ -10,20 +10,45 @@ import { createDebugLogger } from "@/lib/debug-logger";
 
 const logger = createDebugLogger("llama-runtime");
 
+// Subclass Gemini to handle unknown models (like gemini-3-pro-preview)
+// that are not yet in the library's metadata registry.
+class GeminiCustom extends Gemini {
+  get metadata() {
+    try {
+      return super.metadata;
+    } catch (e) {
+      // Fallback for unknown models
+      return {
+        model: this.model,
+        temperature: this.temperature,
+        topP: this.topP ?? 1,
+        contextWindow: 2000000, // 2M context window for Gemini 1.5 Pro / 3
+        tokenizer: undefined,
+        structuredOutput: true,
+        safetySettings: [],
+      };
+    }
+  }
+}
+
 let llm: Gemini | null = null;
 let embedModel: GeminiEmbedding | null = null;
 let initialized = false;
 
-const GEMINI_MODEL_VALUES = Object.values(GEMINI_MODEL) as GEMINI_MODEL[];
-const GEMINI_EMBED_MODEL_VALUES = Object.values(GEMINI_EMBEDDING_MODEL) as GEMINI_EMBEDDING_MODEL[];
+const GEMINI_MODEL_VALUES = Object.values(GEMINI_MODEL) as string[];
+const GEMINI_EMBED_MODEL_VALUES = Object.values(GEMINI_EMBEDDING_MODEL) as string[];
 
 function resolveEnumValue<T extends string>(
   value: string | undefined,
-  validValues: readonly T[],
+  validValues: readonly string[],
   fallback: T,
   envKey: string,
 ): T {
-  if (value && validValues.includes(value as T)) {
+  // Allow gemini-3-pro-preview explicitly even if not in the enum yet
+  if (value === "gemini-3-pro-preview") {
+    return value as T;
+  }
+  if (value && validValues.includes(value)) {
     return value as T;
   }
   logger.warn("Invalid %s provided; falling back", { envKey, value, fallback });
@@ -82,7 +107,7 @@ export function ensureLlamaRuntime() {
     "GEMINI_EMBED_MODEL",
   );
 
-  llm = new Gemini({
+  llm = new GeminiCustom({
     apiKey: env.GEMINI_API_KEY,
     model: selectedGeminiModel,
     temperature: 0.2,
