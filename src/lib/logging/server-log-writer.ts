@@ -1,203 +1,184 @@
 import "server-only";
+import { Timestamp } from "firebase-admin/firestore";
 
-import { promises as fs } from "fs";
-import path from "node:path";
-import { env } from "@/env";
 import { type LogEntry, type LogLevel } from "@/lib/logging/types";
-import { getRequestLogContext, type RequestLogContext } from "@/lib/logging/request-log-registry";
+import { getRequestLogContext } from "@/lib/logging/request-log-registry";
 import { getActiveRequestId } from "@/lib/logging/request-id-context";
+import { env } from "@/env";
+import { getDb } from "@/lib/firebase-admin";
 
-const LOG_ROOT = path.join(process.cwd(), "logs");
-const REQUEST_LOG_DIR = path.join(LOG_ROOT, "requests");
-const SERVER_LOG_FILE = path.join(LOG_ROOT, "server-log.txt");
+const FIRESTORE_COLLECTION = "appLogs";
 
-const initializedHeaders = new Set<string>();
+type FirestoreLogDocument = {
+  severity: "DEBUG" | "INFO" | "WARNING" | "ERROR";
+  scope: string;
+  message: string;
+  timestamp: string;
+  requestId?: string;
+  data?: unknown;
+  context?: unknown;
+  environment: string;
+  createdAt: Timestamp;
+};
 
-let initialized = false;
-
-const requestLogDebugEnabled = env.LOG_REQUEST_DEBUG;
-const INTERNAL_SCOPE = "server-log-writer";
-
-function debugRequestLog(message: string, metadata?: Record<string, unknown>): void {
-  if (!requestLogDebugEnabled) {
-    return;
-  }
-  emitInternalLog("debug", message, metadata);
-}
-
-function emitInternalLog(level: LogLevel, message: string, metadata?: Record<string, unknown>): void {
-  const entry: LogEntry = {
-    timestamp: new Date().toISOString(),
-    scope: INTERNAL_SCOPE,
-    level,
-    message,
-    data: metadata,
+function buildFirestoreDocument(
+  payload: Record<string, unknown>,
+  severity: FirestoreLogDocument["severity"],
+  timestamp: Date,
+  requestId?: string,
+): FirestoreLogDocument {
+  const doc: FirestoreLogDocument = {
+    severity,
+    scope: String(payload.scope ?? "unknown"),
+    message: String(payload.message ?? ""),
+    timestamp: timestamp.toISOString(),
+    environment: env.NODE_ENV,
+    createdAt: Timestamp.now(),
   };
-  void ensureLogDirectories()
-    .then(() => appendLine(SERVER_LOG_FILE, formatLogLine(entry)))
-    .catch(() => undefined);
-}
-
-function reportLogFailure(error: unknown): void {
-  emitInternalLog("error", "Failed to append log entry", {
-    message: error instanceof Error ? error.message : String(error),
-    stack: error instanceof Error ? error.stack : undefined,
-  });
-}
-
-async function ensureLogDirectories(): Promise<void> {
-  if (initialized) {
-    return;
+  if (requestId) {
+    doc.requestId = requestId;
   }
-  await fs.mkdir(LOG_ROOT, { recursive: true });
-  await fs.mkdir(REQUEST_LOG_DIR, { recursive: true });
-  initialized = true;
-  debugRequestLog("Ensured log directories", {
-    root: LOG_ROOT,
-    requestDir: REQUEST_LOG_DIR,
-  });
-}
-
-function sanitizeSegment(value: string | undefined, fallback: string): string {
-  if (!value) {
-    return fallback;
+  const cleanedData = pruneUndefined(payload.data);
+  if (cleanedData !== undefined) {
+    doc.data = cleanedData;
   }
-  const normalized = value
-    .normalize("NFKD")
-    .replace(/[^\w\s-]+/g, "")
-    .trim()
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .toLowerCase();
-  return normalized || fallback;
-}
-
-function formatTimestamp(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return formatTimestamp(new Date().toISOString());
+  const cleanedContext = pruneUndefined(payload.context);
+  if (cleanedContext !== undefined) {
+    doc.context = cleanedContext;
   }
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-  const hh = String(date.getHours()).padStart(2, "0");
-  const min = String(date.getMinutes()).padStart(2, "0");
-  const ss = String(date.getSeconds()).padStart(2, "0");
-  return `${yyyy}${mm}${dd}-${hh}${min}${ss}`;
+  return doc;
 }
 
-function buildRequestFileName(requestId: string, context: RequestLogContext): string {
-  const timestamp = formatTimestamp(context.createdAt);
-  const company = sanitizeSegment(context.companyName, "company");
-  const role = sanitizeSegment(context.jobTitle, "role");
-  const suffix = requestId.replace(/[^a-zA-Z0-9]/g, "").slice(-6) || "req";
-  return `${timestamp}_${company}_${role}_${suffix}`;
+function pruneUndefined(value: unknown): unknown {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (Array.isArray(value)) {
+    const pruned = value
+      .map((item) => pruneUndefined(item))
+      .filter((item) => item !== undefined);
+    return pruned;
+  }
+  if (value && typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      const cleaned = pruneUndefined(val);
+      if (cleaned !== undefined) {
+        result[key] = cleaned;
+      }
+    }
+    return result;
+  }
+  return value;
 }
 
-function serializeData(data: unknown): string | undefined {
+let firestoreFailureCount = 0;
+
+async function persistLogToFirestore(doc: FirestoreLogDocument): Promise<void> {
+  try {
+    const db = getDb();
+    await db.collection(FIRESTORE_COLLECTION).add(doc);
+    if (firestoreFailureCount > 0) {
+      console.warn(
+        JSON.stringify({
+          severity: "INFO",
+          scope: "firestore-log-writer",
+          message: `Logging pipeline recovered after ${firestoreFailureCount} Firestore failures`,
+          timestamp: new Date().toISOString(),
+        }),
+      );
+      firestoreFailureCount = 0;
+    }
+  } catch (error) {
+    firestoreFailureCount += 1;
+    console.error(
+      JSON.stringify({
+        severity: "ERROR",
+        scope: "firestore-log-writer",
+        message: `Firestore logging failure #${firestoreFailureCount}`,
+        timestamp: new Date().toISOString(),
+        data: {
+          error: error instanceof Error ? { message: error.message, stack: error.stack } : String(error),
+        },
+      }),
+    );
+  }
+}
+
+function serializeData(data: unknown): unknown {
   if (data === undefined) {
     return undefined;
   }
   if (data instanceof Error) {
-    return JSON.stringify({
+    return {
       name: data.name,
       message: data.message,
       stack: data.stack,
-    });
+    };
   }
   if (typeof data === "bigint") {
     return data.toString();
   }
-  try {
-    return JSON.stringify(data);
-  } catch (error) {
-    return JSON.stringify({
-      fallback: String(data),
-      error: error instanceof Error ? error.message : "serialization-failed",
-    });
-  }
+  return data;
 }
 
-function formatLogLine(entry: LogEntry): string {
-  const parts = [
-    entry.timestamp,
-    `[${entry.scope}]`,
-    entry.level.toUpperCase(),
-    entry.message,
-  ];
-  const serialized = serializeData(entry.data);
-  if (serialized) {
-    parts.push(serialized);
+function levelToSeverity(level: LogLevel): "DEBUG" | "INFO" | "WARNING" | "ERROR" {
+  switch (level) {
+    case "debug":
+      return "DEBUG";
+    case "info":
+      return "INFO";
+    case "warn":
+      return "WARNING";
+    case "error":
+    default:
+      return "ERROR";
   }
-  if (entry.requestId) {
-    parts.push(`requestId=${entry.requestId}`);
-  }
-  return parts.join(" ");
-}
-
-async function appendLine(filePath: string, line: string): Promise<void> {
-  await fs.appendFile(filePath, `${line}\n`, { encoding: "utf8" });
-}
-
-async function ensureRequestLogHeader(filePath: string, context: RequestLogContext): Promise<void> {
-  if (initializedHeaders.has(filePath)) {
-    return;
-  }
-  try {
-    await fs.access(filePath);
-    initializedHeaders.add(filePath);
-    return;
-  } catch {
-    // fallthrough to write header
-  }
-  const headerLines = [
-    "=== Generation Request Log ===",
-    `createdAt: ${context.createdAt}`,
-    `company: ${context.companyName ?? "<unknown>"}`,
-    `role: ${context.jobTitle ?? "<unknown>"}`,
-    context.sessionId ? `sessionId: ${context.sessionId}` : null,
-    context.mode ? `mode: ${context.mode}` : null,
-    "",
-  ].filter(Boolean) as string[];
-  await fs.appendFile(filePath, `${headerLines.join("\n")}\n`, { encoding: "utf8" });
-  initializedHeaders.add(filePath);
-  debugRequestLog("Initialized request log file", { filePath });
 }
 
 export async function appendLogEntry(entry: LogEntry): Promise<void> {
-  try {
-    await ensureLogDirectories();
-    const resolvedRequestId = entry.requestId ?? getActiveRequestId();
-    const entryWithContext = resolvedRequestId ? { ...entry, requestId: resolvedRequestId } : entry;
-    const line = formatLogLine(entryWithContext);
-    debugRequestLog("appendLogEntry invoked", {
-      scope: entry.scope,
-      level: entry.level,
-      hasRequestId: Boolean(entryWithContext.requestId),
-    });
-    await appendLine(SERVER_LOG_FILE, line);
-    debugRequestLog("Wrote entry to server log", { scope: entry.scope, level: entry.level });
-    if (entryWithContext.requestId) {
-      const context = getRequestLogContext(entryWithContext.requestId);
-      if (!context) {
-        debugRequestLog("Missing request context", { requestId: entryWithContext.requestId });
-        return;
-      }
-      const fileName = buildRequestFileName(entryWithContext.requestId, context);
-      const requestFile = path.join(REQUEST_LOG_DIR, `${fileName}.log`);
-      debugRequestLog("Writing request log entry", { requestFile });
-      await ensureRequestLogHeader(requestFile, context);
-      await appendLine(requestFile, line);
-      debugRequestLog("Wrote entry to request log", { requestFile });
-    }
-  } catch (error) {
-    reportLogFailure(error);
-    throw error;
-  }
-}
+  const resolvedRequestId = entry.requestId ?? getActiveRequestId();
+  
+  const payload: Record<string, unknown> = {
+    message: entry.message,
+    scope: entry.scope,
+  };
 
-export const logPaths = {
-  root: LOG_ROOT,
-  serverLog: SERVER_LOG_FILE,
-  requestLogs: REQUEST_LOG_DIR,
-};
+  if (resolvedRequestId) {
+    payload.requestId = resolvedRequestId;
+    const context = getRequestLogContext(resolvedRequestId);
+    if (context) {
+      payload.context = context;
+    }
+  }
+
+  if (entry.data !== undefined) {
+    payload.data = serializeData(entry.data);
+  }
+
+  const severity = levelToSeverity(entry.level);
+  const logTimestamp = new Date(entry.timestamp);
+
+  // --- DUAL LOGGING STRATEGY ---
+  // 1. Write to Stdout (Reliable, Synchronous-ish)
+  // We output structured JSON so Cloud Run picks it up.
+  // This acts as a fallback if the API call is throttled or fails.
+  const jsonLog = {
+    ...payload,
+    severity,
+    timestamp: logTimestamp,
+    "logging.googleapis.com/trace": resolvedRequestId 
+      ? `projects/${env.FIREBASE_PROJECT_ID}/traces/${resolvedRequestId}` 
+      : undefined,
+  };
+  
+  // Use console.error for errors to ensure they go to stderr (which Cloud Run also captures)
+  if (severity === "ERROR") {
+    console.error(JSON.stringify(jsonLog));
+  } else {
+    console.log(JSON.stringify(jsonLog));
+  }
+
+  const firestoreDoc = buildFirestoreDocument(payload, severity, logTimestamp, resolvedRequestId);
+  await persistLogToFirestore(firestoreDoc);
+}

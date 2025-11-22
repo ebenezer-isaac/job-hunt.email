@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import "@/lib/logging/server-writer-bootstrap";
 import { setAuthCookies } from "next-firebase-auth-edge/lib/next/cookies";
 import { authCookieOptions } from "@/lib/auth-config";
 import { createDebugLogger, REQUEST_ID_HEADER } from "@/lib/debug-logger";
@@ -21,7 +22,10 @@ export async function POST(request: NextRequest) {
     }
 
     const idToken = authHeader.slice("bearer ".length).trim();
+    logger.step("Verifying ID token");
     const decoded = await getAuthClient().verifyIdToken(idToken);
+    
+    logger.step("Checking allowlist for user", { uid: decoded.uid, email: decoded.email });
     const allowed = await isUserAllowed(decoded.uid, decoded.email ?? null);
     if (!allowed) {
       logger.warn("Blocked login for non-whitelisted user", {
@@ -38,6 +42,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    logger.step("Ensuring user profile exists");
     await quotaService.ensureProfile({
       uid: decoded.uid,
       email: decoded.email ?? "",
@@ -45,12 +50,15 @@ export async function POST(request: NextRequest) {
       photoURL: decoded.picture ?? null,
     });
 
+    logger.step("Setting auth cookies");
     const response = await setAuthCookies(request.headers, authCookieOptions);
     response.headers.set(REQUEST_ID_HEADER, requestId);
+    logger.info("Login successful", { uid: decoded.uid });
     return response;
   } catch (error) {
     logger.error("Failed to set auth cookies", {
       error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
     });
     return NextResponse.json(
       {

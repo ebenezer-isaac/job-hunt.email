@@ -24,6 +24,7 @@ export type SessionStoreState = {
     cvStrategy: string;
     coverLetterStrategy: string;
     coldEmailStrategy: string;
+    reconStrategy: string;
   };
   quota: {
     totalAllocated: number;
@@ -89,6 +90,7 @@ function safeTimestamp(value: string): number {
 
 type ArtifactPreviews = {
   cv?: string;
+  cvChangeSummary?: string;
   coverLetter?: string;
   coldEmail?: string;
   coldEmailSubject?: string;
@@ -106,6 +108,8 @@ function extractArtifactPreviews(metadata?: Record<string, unknown>): ArtifactPr
   const previewsRecord = previewsRaw as Record<string, unknown>;
   return {
     cv: typeof previewsRecord.cv === "string" ? previewsRecord.cv : undefined,
+    cvChangeSummary:
+      typeof previewsRecord.cvChangeSummary === "string" ? previewsRecord.cvChangeSummary : undefined,
     coverLetter: typeof previewsRecord.coverLetter === "string" ? previewsRecord.coverLetter : undefined,
     coldEmail: typeof previewsRecord.coldEmail === "string" ? previewsRecord.coldEmail : undefined,
     coldEmailSubject:
@@ -154,6 +158,7 @@ function buildArtifactsFromSession(session?: ClientSession | null): GenerationAr
       mimeType: files.cv.mimeType,
       metadata: { label: files.cv.label },
       pageCount: readNumber(session.metadata, "cvPageCount") ?? null,
+      changeSummary: previews.cvChangeSummary,
     };
   }
   if (files.coverLetter) {
@@ -197,6 +202,7 @@ function createSessionStore(initialState?: InitialSessionState) {
       cvStrategy: "",
       coverLetterStrategy: "",
       coldEmailStrategy: "",
+      reconStrategy: "",
     },
     quota: (initialState as InitialSessionState & { quota?: SessionStoreState["quota"] })?.quota ?? null,
     actions: {
@@ -353,6 +359,14 @@ function appendOrMerge(history: ChatMessage[], message: ChatMessage): ChatMessag
 
 function shouldMerge(previous: ChatMessage, incoming: ChatMessage): boolean {
   if (incoming.role === "user") {
+    return false;
+  }
+  if (previous.mergeDisabled || incoming.mergeDisabled) {
+    return false;
+  }
+  const previousKind = previous.metadata?.kind ?? null;
+  const incomingKind = incoming.metadata?.kind ?? null;
+  if (previousKind === "log" || incomingKind === "log") {
     return false;
   }
   return (

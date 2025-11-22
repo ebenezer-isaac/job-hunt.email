@@ -16,4 +16,5 @@ export const PUBLIC_MIDDLEWARE_BYPASS_REGEX = [
 	/^\/manifest\.json$/,
 	/^\/assets\//,
 	/^\/api\/internal\/access-control\/check$/,
+	/^\/api\/log$/,
 ];

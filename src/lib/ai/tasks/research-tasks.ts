@@ -1,11 +1,14 @@
 import { MODEL_TYPES, type ModelClient } from "../model-client";
 import { renderPrompt } from "../prompts";
 import type { ResearchCompanyInput } from "../service-types";
-import type { DebugLogger } from "@/lib/debug-logger";
+import { createDebugLogger } from "@/lib/debug-logger";
 
-export function createResearchTasks(client: ModelClient, logger: DebugLogger) {
+const logger = createDebugLogger("research-tasks");
+
+export function createResearchTasks(client: ModelClient) {
   return {
     async researchCompany(input: ResearchCompanyInput): Promise<Record<string, unknown>> {
+      logger.step("Researching company", { companyName: input.companyName });
       const prompt = renderPrompt("researchCompanyAndIdentifyPeople", {
         companyName: input.companyName,
         roleContext: input.roleContext ?? "",
@@ -13,7 +16,9 @@ export function createResearchTasks(client: ModelClient, logger: DebugLogger) {
         reconStrategy: input.reconStrategy,
       });
       try {
-        return await client.generateJsonWithRetry<Record<string, unknown>>(prompt);
+        const result = await client.generateJsonWithRetry<Record<string, unknown>>(prompt);
+        logger.info("Company research complete", { companyName: input.companyName });
+        return result;
       } catch (error) {
         logger.warn("Failed to research company", { error: error instanceof Error ? error.message : String(error) });
         return {
@@ -40,6 +45,7 @@ export function createResearchTasks(client: ModelClient, logger: DebugLogger) {
       const prompt = renderPrompt("getIntelligence", { personName, companyName });
       try {
         const result = await client.generateJsonWithRetry<{ jobTitles: string[] }>(prompt, MODEL_TYPES.FLASH);
+        logger.info("Intelligence gathered", { personName, companyName, jobTitlesCount: result.jobTitles?.length });
         return result.jobTitles ?? [];
       } catch (error) {
         logger.warn("Failed to get intelligence", { error: error instanceof Error ? error.message : String(error) });

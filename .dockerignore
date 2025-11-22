@@ -1,0 +1,22 @@
+# Node / Next build artifacts
+node_modules
+.next
+out
+dist
+coverage
+
+# Local runtime files
+logs
+.llamaindex-cache
+firebase-debug.log
+
+# Secrets and env files
+.env*
+.tmp-env/
+
+# Offline corpora / personal data
+source_files/
+
+# Git metadata
+.git
+.gitignore

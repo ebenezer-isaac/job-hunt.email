@@ -9,6 +9,10 @@ function sanitizeSegment(value: string | undefined, fallback: string): string {
   return sanitized || fallback;
 }
 
+export function normalizeStorageSegment(value: string | undefined, fallback: string): string {
+  return sanitizeSegment(value, fallback);
+}
+
 function sanitizeFilename(value: string | undefined, fallback: string): string {
   const trimmed = value?.trim() ?? "";
   if (!trimmed) {

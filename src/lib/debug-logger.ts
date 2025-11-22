@@ -1,6 +1,10 @@
 import type { LogEntry, LogLevel, LogTransport } from "@/lib/logging/types";
 import { PUBLIC_ROUTE_SEGMENTS } from "./auth-shared";
 
+type HttpTransportOptions = {
+  headers?: Record<string, string>;
+};
+
 export type DebugLogger = {
   step: (message: string, payload?: unknown) => void;
   data: (label: string, payload: unknown) => void;
@@ -132,11 +136,11 @@ export function createDebugLogger(scope: string, options?: LoggerOptions): Debug
   };
 }
 
-export function createHttpLogTransport(origin: string): LogTransport {
+export function createHttpLogTransport(origin: string, options?: HttpTransportOptions): LogTransport {
   const endpoint = `${trimTrailingSlash(origin)}${LOG_ENDPOINT_PATH}`;
   return {
     send(entry) {
-      return sendEntryToEndpoint(endpoint, entry);
+      return sendEntryToEndpoint(endpoint, entry, options);
     },
   };
 }
@@ -144,6 +148,36 @@ export function createHttpLogTransport(origin: string): LogTransport {
 export function createConsoleLogTransport(): LogTransport {
   return {
     send(entry) {
+      if (!isBrowser) {
+        const payload: Record<string, unknown> = {
+          severity: levelToSeverity(entry.level),
+          message: entry.message,
+          scope: entry.scope,
+          timestamp: entry.timestamp,
+        };
+        if (entry.requestId) {
+          payload.requestId = entry.requestId;
+        }
+        if (entry.data !== undefined) {
+          payload.data = entry.data;
+        }
+
+        const logFn = entry.level === "error" ? console.error : console.log;
+        try {
+          logFn(JSON.stringify(payload));
+        } catch {
+          logFn(
+            JSON.stringify({
+              severity: "ERROR",
+              message: "Failed to serialize log entry",
+              originalMessage: entry.message,
+              timestamp: new Date().toISOString(),
+            }),
+          );
+        }
+        return;
+      }
+
       const logger = getConsoleMethod(entry.level);
       const prefix = `[${entry.scope}] ${entry.message}`;
       if (entry.requestId) {
@@ -163,8 +197,23 @@ export function createConsoleLogTransport(): LogTransport {
   };
 }
 
+function levelToSeverity(level: LogLevel): "DEBUG" | "INFO" | "WARNING" | "ERROR" {
+  switch (level) {
+    case "debug":
+      return "DEBUG";
+    case "info":
+      return "INFO";
+    case "warn":
+      return "WARNING";
+    case "error":
+    default:
+      return "ERROR";
+  }
+}
+
 function dispatch(entry: LogEntry, transport: LogTransport | null): void {
   if (!transport) {
+    mirrorEntryToConsole(entry);
     return;
   }
   try {
@@ -174,6 +223,42 @@ function dispatch(entry: LogEntry, transport: LogTransport | null): void {
     }
   } catch {
     // Swallow logging transport errors to avoid interfering with request flow.
+  } finally {
+    mirrorEntryToConsole(entry);
+  }
+}
+
+const severityStyles: Record<LogLevel, { color: string; method: "log" | "info" | "warn" | "error" | "debug" }> = {
+  debug: { color: "#64748b", method: "debug" },
+  info: { color: "#2563eb", method: "info" },
+  warn: { color: "#d97706", method: "warn" },
+  error: { color: "#dc2626", method: "error" },
+};
+
+function mirrorEntryToConsole(entry: LogEntry): void {
+  if (!isBrowser || typeof console === "undefined") {
+    return;
+  }
+  const severity = severityStyles[entry.level] ?? severityStyles.info;
+  const scopeLabel = entry.scope ?? "unknown";
+  const baseLabel = entry.message.startsWith("data::") ? "DATA" : entry.level.toUpperCase();
+  const header = `%c[${baseLabel}]%c ${scopeLabel} :: ${entry.message}`;
+  const args: unknown[] = [
+    header,
+    `color:${severity.color}; font-weight:600;`,
+    "color:inherit; font-weight:500;",
+  ];
+  if (entry.requestId) {
+    args.push({ requestId: entry.requestId });
+  }
+  if (entry.data !== undefined) {
+    args.push(entry.data);
+  }
+  const method = console[severity.method] ?? console.log;
+  try {
+    method.apply(console, args as []);
+  } catch {
+    // no-op
   }
 }
 
@@ -202,23 +287,28 @@ function normalizePayload(payload: unknown): unknown {
 }
 
 function createDefaultTransport(): LogTransport | null {
+  if (!isBrowser) {
+    if (typeof globalThis !== "undefined") {
+      const writer = globalThis.__serverLogWriter__;
+      if (writer) {
+        return {
+          send(entry) {
+            try {
+              return Promise.resolve(writer(entry));
+            } catch (error) {
+              return Promise.reject(error);
+            }
+          },
+        };
+      }
+    }
+    return createConsoleLogTransport();
+  }
+
   if (shouldSuppressBrowserTransport()) {
     return null;
   }
-  if (!isBrowser && typeof globalThis !== "undefined") {
-    const writer = globalThis.__serverLogWriter__;
-    if (writer) {
-      return {
-        send(entry) {
-          try {
-            return Promise.resolve(writer(entry));
-          } catch (error) {
-            return Promise.reject(error);
-          }
-        },
-      };
-    }
-  }
+
   const endpoint = resolveLogEndpoint();
   if (!endpoint) {
     return null;
@@ -270,10 +360,11 @@ function trimTrailingSlash(value: string): string {
   return value.endsWith("/") ? value.slice(0, -1) : value;
 }
 
-function sendEntryToEndpoint(endpoint: string, entry: LogEntry): Promise<void> {
+function sendEntryToEndpoint(endpoint: string, entry: LogEntry, options?: HttpTransportOptions): Promise<void> {
   const resolvedRequestId = entry.requestId ?? getAmbientRequestId();
   const headers: Record<string, string> = {
     "content-type": "application/json",
+    ...(options?.headers ?? {}),
   };
   if (resolvedRequestId) {
     headers[REQUEST_ID_HEADER] = resolvedRequestId;
@@ -284,8 +375,30 @@ function sendEntryToEndpoint(endpoint: string, entry: LogEntry): Promise<void> {
     body: JSON.stringify({ entry }),
     keepalive: typeof navigator !== "undefined" && "sendBeacon" in navigator,
   })
-    .then(() => undefined)
-    .catch(() => undefined);
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return undefined;
+    })
+    .catch((error) => {
+      warnLogEndpointFailure(endpoint, entry, error);
+      throw error;
+    });
+}
+
+function warnLogEndpointFailure(endpoint: string, entry: LogEntry, error: unknown): void {
+  if (typeof console === "undefined" || !console.warn) {
+    return;
+  }
+  console.warn(
+    `[debug-logger] Failed to send log entry to ${endpoint}: ${error instanceof Error ? error.message : String(error)}`,
+    {
+      scope: entry.scope,
+      level: entry.level,
+      requestId: entry.requestId ?? null,
+    },
+  );
 }
 
 function getAmbientRequestId(): string | undefined {

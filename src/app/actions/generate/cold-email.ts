@@ -1,8 +1,11 @@
 import { aiService } from "@/lib/ai/service";
 import { apolloService } from "@/lib/services/apollo-service";
+import { createDebugLogger } from "@/lib/debug-logger";
 import type { ResearchBrief } from "@/lib/ai/llama/context-engine";
 
 import type { ParsedForm } from "./form";
+
+const logger = createDebugLogger("cold-email-helper");
 
 type EmitFn = (message: string) => Promise<void>;
 
@@ -56,17 +59,21 @@ export async function maybeEnrichContactWithApollo(parsed: ParsedForm, emit: Emi
   }
   const needsEnrichment = !parsed.contactEmail?.trim() || !parsed.contactName?.trim();
   if (!needsEnrichment) {
+    logger.step("Apollo enrichment skipped: contact info already present");
     return;
   }
   if (!apolloService.isEnabled()) {
+    logger.warn("Apollo enrichment skipped: API key missing");
     await emit("Apollo enrichment skipped: API key missing.");
     return;
   }
   const domain = normalizeDomain(parsed.companyWebsite) ?? normalizeDomain(parsed.jobSourceUrl);
   if (!domain) {
+    logger.warn("Apollo enrichment skipped: unable to derive domain");
     await emit("Apollo enrichment skipped: Unable to derive company domain.");
     return;
   }
+  logger.step("Starting Apollo enrichment", { domain, companyName: parsed.companyName });
   await emit("Searching Apollo for verified decision-makers...");
   try {
     const preferredName = parsed.contactName?.trim() || parsed.jobTitle || parsed.companyName;
@@ -80,9 +87,11 @@ export async function maybeEnrichContactWithApollo(parsed: ParsedForm, emit: Emi
       },
     });
     if (!contact) {
+      logger.info("Apollo returned no contact");
       await emit("Apollo did not return a usable contact.");
       return;
     }
+    logger.info("Apollo enrichment successful", { contactName: contact.name, contactTitle: contact.title });
     if (contact.name) {
       parsed.contactName = contact.name;
     }
@@ -95,6 +104,7 @@ export async function maybeEnrichContactWithApollo(parsed: ParsedForm, emit: Emi
     await emit("Apollo enrichment complete.");
   } catch (error) {
     const reason = error instanceof Error ? error.message : "Unknown error";
+    logger.error("Apollo enrichment failed", { error: reason });
     await emit(`Apollo enrichment failed: ${reason}`);
   }
 }

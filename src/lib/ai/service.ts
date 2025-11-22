@@ -25,9 +25,9 @@ export class AIService {
   private readonly logger = createDebugLogger("ai-service-instance");
   private readonly client = new ModelClient();
   private readonly documents = createDocumentTasks(this.client);
-  private readonly jobs = createJobIngestionTasks(this.client, this.logger);
+  private readonly jobs = createJobIngestionTasks(this.client);
   private readonly outreach = createOutreachTasks(this.client);
-  private readonly research = createResearchTasks(this.client, this.logger);
+  private readonly research = createResearchTasks(this.client);
 
   extractJobDescription(rawContent: string) {
     return this.jobs.extractJobDescription(rawContent);
@@ -70,6 +70,7 @@ export class AIService {
   }
 
   async parseColdOutreachInput(userInput: string) {
+    this.logger.step("Parsing cold outreach input", { inputLength: userInput.length });
     try {
       const result = await this.outreach.parseColdOutreachInput(userInput);
       this.logger.step("Parsed cold outreach input", result);

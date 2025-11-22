@@ -7,6 +7,7 @@ import {
 import { getDb } from "@/lib/firebase-admin";
 import { createDebugLogger } from "@/lib/debug-logger";
 import { getAccessControlConfig } from "@/lib/security/allowed-users";
+import { env } from "@/env";
 
 const collectionName = "userProfiles";
 
@@ -146,11 +147,15 @@ export function getUserProfileRef(uid: string): DocumentReference<FirestoreUserP
 }
 
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
+  userProfileLogger.step("Fetching user profile", { uid });
   const snapshot = await getRef(uid).get();
   if (!snapshot.exists) {
+    userProfileLogger.info("User profile not found", { uid });
     return null;
   }
-  return userProfileFromSnapshot(snapshot);
+  const profile = userProfileFromSnapshot(snapshot);
+  userProfileLogger.data("user-profile-loaded", { uid, quota: profile.quota });
+  return profile;
 }
 
 export type EnsureProfileParams = {
@@ -161,10 +166,13 @@ export type EnsureProfileParams = {
 };
 
 export async function ensureUserProfile(params: EnsureProfileParams): Promise<UserProfile> {
+  userProfileLogger.step("Ensuring user profile", { uid: params.uid, email: params.email });
   const ref = getRef(params.uid);
   const now = new Date();
   const config = await getAccessControlConfig();
-  const defaultAllocation = config.defaultQuota;
+  
+  const isAdmin = env.ADMIN_EMAIL && params.email.toLowerCase() === env.ADMIN_EMAIL.toLowerCase();
+  const defaultAllocation = isAdmin ? 1000 : config.defaultQuota;
 
   const profile = await getDb().runTransaction(async (tx) => {
     const snap = await tx.get(ref);
@@ -173,6 +181,7 @@ export async function ensureUserProfile(params: EnsureProfileParams): Promise<Us
       return userProfileFromSnapshot(snap);
     }
 
+    userProfileLogger.step("Creating new user profile", { uid: params.uid, defaultAllocation, isAdmin });
     const newProfile: UserProfile = {
       uid: params.uid,
       email: params.email,
@@ -197,6 +206,7 @@ export async function ensureUserProfile(params: EnsureProfileParams): Promise<Us
     };
 
     tx.set(ref, serializeUserProfile(newProfile));
+    userProfileLogger.info("New user profile persisted", { uid: params.uid });
     return newProfile;
   });
 

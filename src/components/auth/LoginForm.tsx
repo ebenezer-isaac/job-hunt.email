@@ -18,7 +18,6 @@ export function LoginForm() {
   const redirectParam = searchParams.get(LOGIN_REDIRECT_PARAM_KEY);
   const loginStatus = searchParams.get(LOGIN_STATUS_PARAM_KEY);
   const redirectPath = redirectParam && redirectParam.startsWith("/") ? redirectParam : "/";
-
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusStep, setStatusStep] = useState<'authenticating' | 'establishing' | 'redirecting' | null>(null);
@@ -47,7 +46,7 @@ export function LoginForm() {
     setStatusStep(null);
     setIsSubmitting(false);
     setError(null);
-  }, [isAllowlistDenied]);
+  }, [isAllowlistDenied, loginStatus]);
 
   const handleGoogleSignIn = async () => {
     if (isAllowlistDenied) {
@@ -76,6 +75,7 @@ export function LoginForm() {
         const payload = await response.json().catch(() => null);
         throw new Error(payload?.message ?? "Unable to establish session");
       }
+      const responseBody = await response.json().catch(() => null);
 
       setStatusStep('redirecting');
       router.push(redirectPath);
@@ -108,7 +108,7 @@ export function LoginForm() {
           variant: "progress" as const,
         },
         denied: {
-          title: "Access request needed",
+          title: "Access Denied",
           subtitle: `This Google account is not authorised to use this application. Please try again once your access request has been approved.`,
           variant: "blocked" as const,
         },
@@ -143,12 +143,12 @@ export function LoginForm() {
       ) : null}
 
       <div className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-left text-xs text-zinc-600">
-        <p className="text-sm font-semibold text-zinc-900">Closed testing notice</p>
+        <p className="text-sm font-semibold text-zinc-900">Closed Beta Testing Notice</p>
         <p className="mt-1">
           Access is limited to approved applicants. Email <a href={`mailto:${allowlistContactEmail}`} className="font-medium text-zinc-900 underline">{allowlistContactEmail}</a> to request access.
         </p>
         <p className="mt-2">
-          Disclaimer: This application is in closed beta teseting and may contain bugs or incomplete features. Use at your own risk.
+          Disclaimer: This application is in closed beta testing and may contain bugs or incomplete features. Use at your own risk.
         </p>
         <p className="mt-2">
           All data logs and usage analytics are retained to improve performance and business logic. APIs incur compute and billing costs. Review the open-source code at <a href={repoUrl} target="_blank" rel="noreferrer" className="font-medium text-zinc-900 underline">GitHub</a> to self-host or raise issues.

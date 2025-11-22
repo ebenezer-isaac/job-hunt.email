@@ -23,6 +23,7 @@ function getAllowlistedEmails(): Set<string> {
 }
 
 export async function POST() {
+  logger.step("Smoke test request received");
   const allowlist = getAllowlistedEmails();
   if (!allowlist.size) {
     logger.warn("Smoke test endpoint disabled: empty allowlist");
@@ -42,6 +43,7 @@ export async function POST() {
   }
 
   const email = tokens.decodedToken.email?.toLowerCase() ?? "";
+  logger.step("Validating smoke test user", { email });
   if (!allowlist.has(email)) {
     logger.warn("Smoke test request rejected: not allowlisted", { email });
     return NextResponse.json(

@@ -53,12 +53,15 @@ export class QuotaService {
     displayName?: string | null;
     photoURL?: string | null;
   }): Promise<UserProfile> {
+    quotaLogger.step("Ensuring user profile", { uid: params.uid });
     return ensureUserProfile(params);
   }
 
   async getQuota(uid: string): Promise<QuotaSnapshot | null> {
+    quotaLogger.step("Fetching quota", { uid });
     const profile = await getUserProfile(uid);
     if (!profile) {
+      quotaLogger.warn("Quota fetch failed: profile not found", { uid });
       return null;
     }
     return { uid: profile.uid, quota: profile.quota };

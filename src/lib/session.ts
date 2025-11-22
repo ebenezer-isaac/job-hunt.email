@@ -64,7 +64,12 @@ sessionLogger.step("Session repository initializing");
 
 const converter: FirestoreDataConverter<SessionRecord> = {
   toFirestore(record) {
-    sessionLogger.step("Converting record to Firestore", record);
+    sessionLogger.step("Converting record to Firestore", {
+      id: record.id,
+      status: record.status,
+      generatedFileCount: Object.keys(record.generatedFiles ?? {}).length,
+      metadataKeys: Object.keys(record.metadata ?? {}),
+    });
     const { createdAt, updatedAt, processingStartedAt, processingDeadline, ...rest } = record;
 
     const doc: DocumentData = {
@@ -85,7 +90,11 @@ const converter: FirestoreDataConverter<SessionRecord> = {
   },
   fromFirestore(snapshot) {
     const data = snapshot.data();
-    sessionLogger.step("Received Firestore snapshot", { id: snapshot.id, data });
+    sessionLogger.step("Received Firestore snapshot", {
+      id: snapshot.id,
+      hasData: Boolean(data),
+      metadataKeys: data ? Object.keys(data.metadata ?? {}) : [],
+    });
     return {
       ...data,
       createdAt: data.createdAt.toDate(),
@@ -141,7 +150,14 @@ export class SessionRepository {
       return null;
     }
     const data = snapshot.data() ?? null;
-    this.logger.data("session-loaded", data);
+    if (data) {
+      this.logger.data("session-loaded", {
+        id: data.id,
+        status: data.status,
+        chatMessages: data.chatHistory?.length ?? 0,
+        generatedFiles: Object.keys(data.generatedFiles ?? {}).length,
+      });
+    }
     return data;
   }
 
@@ -151,7 +167,7 @@ export class SessionRepository {
     const sessions = snapshot.docs
       .map((doc) => doc.data())
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-    this.logger.data("list-sessions-result", sessions);
+    this.logger.data("list-sessions-result", { count: sessions.length });
     return sessions;
   }
 
@@ -249,7 +265,10 @@ export class SessionRepository {
       }
 
       const updatedHistory = [...current.chatHistory, sanitizedEntry];
-      this.logger.data("chat-history-updated", updatedHistory);
+      this.logger.data("chat-history-updated", {
+        id,
+        entries: updatedHistory.length,
+      });
 
       const updated: SessionRecord = {
         ...current,

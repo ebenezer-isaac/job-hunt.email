@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { createDebugLogger } from "@/lib/debug-logger";
+
+const logger = createDebugLogger("form-schema");
 
 export const formSchema = z.object({
   sessionId: z.string().min(1, "sessionId is required"),
@@ -31,5 +34,6 @@ export function normalizeFormData(formData: FormData): Record<string, string> {
       result[key] = value;
     }
   }
+  logger.step("FormData normalized", { fieldCount: Object.keys(result).length });
   return result;
 }

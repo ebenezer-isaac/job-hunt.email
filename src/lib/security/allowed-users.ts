@@ -1,6 +1,7 @@
 import { getDb } from "@/lib/firebase-admin";
 import { Timestamp, type DocumentReference, type FirestoreDataConverter } from "firebase-admin/firestore";
 import { createDebugLogger } from "@/lib/debug-logger";
+import { env } from "@/env";
 
 const ACCESS_CONTROL_COLLECTION_PATH = "app_config/security/accessControl";
 const ACCESS_CONTROL_DOC_ID = "config";
@@ -89,11 +90,32 @@ export async function getAccessControlConfig(): Promise<AccessControlConfig> {
 }
 
 export async function isUserAllowed(uid: string, email?: string | null): Promise<boolean> {
-  const config = await getAccessControlConfig();
   const normalizedEmail = (email ?? "").trim().toLowerCase();
+  
+  // Admin Bypass
+  if (env.ADMIN_EMAIL && normalizedEmail === env.ADMIN_EMAIL.toLowerCase()) {
+    allowedUsersLogger.info("Admin bypass granted", { uid, email: normalizedEmail });
+    return true;
+  }
+
+  const config = await getAccessControlConfig();
+  allowedUsersLogger.step("Evaluating allowlist", {
+    uid,
+    email: normalizedEmail || null,
+    configUidCount: config.allowedUids.length,
+    configEmailCount: config.allowedEmails.length,
+  });
   const emailAllowed = Boolean(normalizedEmail && config.allowedEmails.map((value) => value.toLowerCase()).includes(normalizedEmail));
   const uidAllowed = config.allowedUids.includes(uid);
-  return uidAllowed || emailAllowed;
+  const allowed = uidAllowed || emailAllowed;
+  allowedUsersLogger.step("Allowlist decision", {
+    uid,
+    email: normalizedEmail || null,
+    uidAllowed,
+    emailAllowed,
+    allowed,
+  });
+  return allowed;
 }
 
 export function invalidateAccessControlCache() {

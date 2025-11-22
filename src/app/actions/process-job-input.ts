@@ -82,6 +82,13 @@ export async function processJobInputAction(input: ProcessJobInput): Promise<Nor
 
   const emailAddresses = aiService.extractEmailAddresses(jobDescription);
 
+  logger.info("Job input processed", {
+    companyName,
+    jobTitle,
+    wasUrl: isUrl,
+    emailCount: emailAddresses.length,
+  });
+
   return {
     jobDescription,
     companyName,

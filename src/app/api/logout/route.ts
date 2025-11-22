@@ -6,16 +6,19 @@ import { createDebugLogger, REQUEST_ID_HEADER } from "@/lib/debug-logger";
 export async function POST(request: NextRequest) {
   const requestId = request.headers.get(REQUEST_ID_HEADER) ?? crypto.randomUUID();
   const logger = createDebugLogger("api-logout", { requestId });
+  logger.step("Logout request received");
   try {
     const response = await removeAuthCookies(request.headers, {
       cookieName: authCookieOptions.cookieName,
       cookieSerializeOptions: authCookieOptions.cookieSerializeOptions,
     });
     response.headers.set(REQUEST_ID_HEADER, requestId);
+    logger.info("Logout successful");
     return response;
   } catch (error) {
     logger.error("Failed to clear auth cookies", {
       error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
     });
     return NextResponse.json(
       {

@@ -33,10 +33,15 @@ const STRATEGY_DOCS: Record<StrategyKey, { label: string; helper: string; readOn
     helper: "Global playbook – visible for reference only.",
     readOnly: true,
   },
+  recon_strategy: {
+    label: "Strategic Recon Playbook",
+    helper: "Global playbook – research workflow reference.",
+    readOnly: true,
+  },
 };
 
 type DocKey = "original_cv" | "extensive_cv";
-type StrategyKey = "cv_strategy" | "cover_letter_strategy" | "cold_email_strategy";
+type StrategyKey = "cv_strategy" | "cover_letter_strategy" | "cold_email_strategy" | "recon_strategy";
 type SourceDocKey = DocKey | StrategyKey;
 type StoreDocKey = keyof SessionStoreState["sourceDocuments"];
 
@@ -46,6 +51,7 @@ const STORE_KEY_MAP: Record<SourceDocKey, StoreDocKey> = {
   cv_strategy: "cvStrategy",
   cover_letter_strategy: "coverLetterStrategy",
   cold_email_strategy: "coldEmailStrategy",
+  recon_strategy: "reconStrategy",
 };
 
 type SaveState = "idle" | "saving" | "saved" | "error" | "global";
@@ -63,6 +69,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     cv_strategy: "global",
     cover_letter_strategy: "global",
     cold_email_strategy: "global",
+    recon_strategy: "global",
   });
   const [, startTransition] = useTransition();
 
@@ -138,7 +145,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           <p className="text-xs uppercase tracking-widest text-zinc-400">Strategy playbooks</p>
           <h3 className="text-lg font-semibold text-zinc-900">Control voice & constraints</h3>
         </header>
-        <div className="grid gap-4 lg:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2">
           {(Object.keys(STRATEGY_DOCS) as StrategyKey[]).map((docType) => {
             const config = STRATEGY_DOCS[docType];
             const storeKey = STORE_KEY_MAP[docType];

@@ -19,6 +19,7 @@ export type StoredArtifact = {
     subject?: string;
     body?: string;
     toAddress?: string;
+    changeSummary?: string;
   };
   generatedFile: {
     key: string;

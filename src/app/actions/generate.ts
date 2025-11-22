@@ -29,12 +29,14 @@ async function persistSessionSuccess(
   coverLetter?: { content?: string; subject?: string; body?: string; toAddress?: string },
   coldEmail?: { content?: string; subject?: string; body?: string; toAddress?: string },
   cvPageCount?: number | null,
+  cvChangeSummary?: string | null,
 ) {
   const previews = sanitizeFirestoreMap({
     coverLetter: coverLetter?.content,
     coldEmail: coldEmail?.content,
     coldEmailSubject: coldEmail?.subject,
     coldEmailBody: coldEmail?.body,
+    cvChangeSummary: cvChangeSummary || undefined,
   });
   const artifactPreviews = Object.keys(previews).length ? previews : undefined;
 
@@ -60,6 +62,7 @@ async function persistSessionSuccess(
       coldEmailSubject: coldEmail?.subject,
       coldEmailBody: coldEmail?.body,
       coldEmailTo: coldEmail?.toAddress,
+      cvChangeSummary: cvChangeSummary || undefined,
       activeHoldKey: null,
       processingHoldStartedAt: null,
     }),
@@ -146,6 +149,7 @@ export async function generateDocumentsAction(
     const processingDeadline = new Date(processingStartedAt.getTime() + PROCESSING_TIMEOUT_MS);
     let holdPlaced = false;
     try {
+      sessionLogger.step("Placing quota hold", { userId, sessionId: parsed.sessionId, holdKey });
       await quotaService.placeHold({
         uid: userId,
         sessionId: holdKey,
@@ -166,6 +170,10 @@ export async function generateDocumentsAction(
         userId,
       );
     } catch (error) {
+      sessionLogger.warn("Failed to place quota hold or update session", {
+        error: error instanceof Error ? error.message : String(error),
+        holdPlaced,
+      });
       if (holdPlaced) {
         await quotaService
           .releaseHold({ uid: userId, sessionId: holdKey, refund: true })
@@ -194,6 +202,7 @@ export async function generateDocumentsAction(
 
     const executeWorkflow = async () => {
       try {
+        sessionLogger.step("Starting generation workflow", { sessionId: parsed.sessionId });
         const result = await runGenerationWorkflow({ parsed, userId, emit, signal: controller.signal });
         clearTimeout(timeoutId);
         await persistSessionSuccess(
@@ -204,6 +213,7 @@ export async function generateDocumentsAction(
           result.coverLetterArtifact?.payload,
           result.coldEmailArtifact?.payload,
           result.cvArtifact.payload.pageCount,
+          result.cvArtifact.payload.changeSummary ?? null,
         );
 
         scheduleChatLog({
@@ -233,16 +243,20 @@ export async function generateDocumentsAction(
             error: commitError instanceof Error ? commitError.message : String(commitError),
           });
         });
+        sessionLogger.info("Generation workflow completed successfully", { sessionId: parsed.sessionId });
       } catch (error) {
         clearTimeout(timeoutId);
         const timedOut = controller.signal.aborted;
-        const message = timedOut
+        const internalMessage = error instanceof Error ? error.message : String(error);
+        const userMessage = timedOut
           ? 'Generation timed out after 45 minutes. Please try again.'
-          : error instanceof Error
-            ? error.message
-            : String(error);
-        sessionLogger.error('Generation failed', { sessionId: parsed.sessionId, error: message });
-        await emit(`Generation failed: ${message}`);
+          : `Generation failed due to an internal error. Email ${env.CONTACT_EMAIL} if it keeps happening.`;
+        sessionLogger.error('Generation failed', {
+          sessionId: parsed.sessionId,
+          error: internalMessage,
+          timedOut,
+        });
+        await emit(`Generation failed: ${userMessage}`);
         await persistSessionFailure(parsed.sessionId, userId);
         await quotaService.releaseHold({ uid: userId, sessionId: holdKey, refund: true }).catch((releaseError) => {
           sessionLogger.warn('Failed to release quota hold', {
@@ -255,7 +269,7 @@ export async function generateDocumentsAction(
           sessionId: parsed.sessionId,
           userId,
           level: 'error',
-          message: `Generation failed: ${message}`,
+          message: `Generation failed: ${userMessage}`,
         });
       } finally {
         await close();

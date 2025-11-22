@@ -1,15 +1,79 @@
 'use client';
 
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { useSessionStore } from "@/store/session-store";
+import { useSessionStore, type ChatMessage } from "@/store/session-store";
 import type { ArtifactPayload } from "@/hooks/useStreamableValue";
+
+type GenerationStatus = "pending" | "in-progress" | "completed" | "failed";
+
+type GenerationLogEntry = {
+  id: string;
+  content: string;
+  timestamp: string;
+  level?: "info" | "success" | "error";
+};
+
+type GenerationRun = {
+  id: string;
+  index: number;
+  logs: GenerationLogEntry[];
+  request?: ChatMessage;
+  summary?: ChatMessage;
+  startedAt: string;
+  lastUpdatedAt: string;
+};
 
 export function ChatView() {
   const chatHistory = useSessionStore((state) => state.chatHistory);
   const generatedDocuments = useSessionStore((state) => state.generatedDocuments);
   const isGenerating = useSessionStore((state) => state.isGenerating);
+  const currentSessionId = useSessionStore((state) => state.currentSessionId);
   const containerRef = useRef<HTMLDivElement>(null);
+  const generations = useMemo(() => buildGenerationRuns(chatHistory), [chatHistory]);
+  const lastWithLogs = useMemo(() => [...generations].reverse().find((run) => run.logs.length > 0) ?? null, [generations]);
+  const sessionKey = currentSessionId ?? "__global";
+  const [panelStateBySession, setPanelStateBySession] = useState<Record<string, boolean>>({});
+  const [expandedBySession, setExpandedBySession] = useState<Record<string, string | null>>({});
+  const panelOpen = panelStateBySession[sessionKey] ?? false;
+  const expandedGenerationId = expandedBySession[sessionKey] ?? null;
+  const userDismissedRef = useRef(false);
+
+  const setPanelOpenForSession = useCallback(
+    (value: boolean) => {
+      setPanelStateBySession((prev) => {
+        const existing = prev[sessionKey];
+        if (existing === value) {
+          return prev;
+        }
+        return { ...prev, [sessionKey]: value };
+      });
+    },
+    [sessionKey],
+  );
+
+  const setExpandedRaw = useCallback(
+    (generationId: string | null) => {
+      setExpandedBySession((prev) => ({ ...prev, [sessionKey]: generationId }));
+    },
+    [sessionKey],
+  );
+
+  const setExpandedAuto = useCallback(
+    (generationId: string | null) => {
+      userDismissedRef.current = false;
+      setExpandedRaw(generationId);
+    },
+    [setExpandedRaw],
+  );
+
+  const setExpandedManual = useCallback(
+    (generationId: string | null) => {
+      userDismissedRef.current = generationId === null;
+      setExpandedRaw(generationId);
+    },
+    [setExpandedRaw],
+  );
 
   useEffect(() => {
     if (!containerRef.current) {
@@ -19,43 +83,493 @@ export function ChatView() {
       top: containerRef.current.scrollHeight,
       behavior: "smooth",
     });
-  }, [chatHistory.length, generatedDocuments]);
+  }, [generatedDocuments]);
 
-  const hasMessages = chatHistory.length > 0;
+  useEffect(() => {
+    if (expandedGenerationId && !generations.some((run: GenerationRun) => run.id === expandedGenerationId)) {
+      setExpandedAuto(null);
+    }
+  }, [expandedGenerationId, generations, setExpandedAuto]);
+
+  useEffect(() => {
+    if (!panelOpen) {
+      userDismissedRef.current = false;
+      return;
+    }
+    if (expandedGenerationId || userDismissedRef.current) {
+      return;
+    }
+    const fallback = lastWithLogs ?? generations[generations.length - 1];
+    if (fallback) {
+      setExpandedAuto(fallback.id);
+    }
+  }, [panelOpen, expandedGenerationId, generations, lastWithLogs, setExpandedAuto]);
+
+  useEffect(() => {
+    if (isGenerating) {
+      userDismissedRef.current = false;
+    }
+  }, [isGenerating]);
+
+  const handleLogsButton = useCallback(() => {
+    if (panelOpen) {
+      userDismissedRef.current = false;
+      setPanelOpenForSession(false);
+      return;
+    }
+    userDismissedRef.current = false;
+    setPanelOpenForSession(true);
+    const target = lastWithLogs ?? generations[generations.length - 1];
+    if (target) {
+      setExpandedAuto(target.id);
+      return;
+    }
+    setExpandedAuto(null);
+  }, [generations, lastWithLogs, panelOpen, setExpandedAuto, setPanelOpenForSession]);
+
+  const showWelcome = generations.length === 0 && !generatedDocuments;
 
   return (
-    <div className="flex-1 overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
-      <div ref={containerRef} className="h-full overflow-y-auto px-6 py-6">
-        {!hasMessages ? <WelcomePanel /> : null}
-        {chatHistory.map((message) => (
-          <article key={message.id} className="mb-4 flex gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-100 text-lg">
-              {message.role === "user" ? "👤" : message.level === "error" ? "⚠️" : "🤖"}
+    <div className="flex flex-1 flex-col gap-6 lg:flex-row">
+      <section className="flex flex-1 flex-col overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 px-6 py-4">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-zinc-500">Conversation</p>
+              <p className="text-base font-semibold text-zinc-900">Artifacts &amp; context</p>
             </div>
-            <div className="flex-1 rounded-2xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-sm text-zinc-800">
-              <div className="flex items-center justify-between text-xs text-zinc-500">
-                <span className="font-semibold uppercase tracking-wide text-zinc-400">{message.role}</span>
-                <time>{new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
-              </div>
-              <div className="prose prose-zinc mt-2 text-sm leading-relaxed">
-                <ReactMarkdown>{message.content}</ReactMarkdown>
-              </div>
-            </div>
-          </article>
-        ))}
-        {isGenerating ? (
-          <div className="flex items-center gap-3 rounded-2xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
-            <span className="relative flex h-4 w-4">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-zinc-400 opacity-75" />
-              <span className="relative inline-flex h-4 w-4 rounded-full bg-zinc-500" />
-            </span>
-            <span className="font-medium">Generating tailored documents…</span>
+            <button
+              type="button"
+              onClick={handleLogsButton}
+              className="inline-flex items-center gap-2 rounded-full border border-zinc-200 px-4 py-2 text-sm font-semibold text-zinc-700 transition hover:border-zinc-300 hover:text-zinc-900"
+            >
+              <span className="text-lg">🧠</span>
+              Detailed logs
+            </button>
           </div>
-        ) : null}
-        {generatedDocuments ? <ArtifactsPanel /> : null}
+          <div ref={containerRef} className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
+            {showWelcome ? <WelcomePanel /> : null}
+            {generatedDocuments ? <ArtifactsPanel /> : null}
+          </div>
+      </section>
+      <GenerationLogsPanel
+        open={panelOpen}
+        generations={generations}
+        expandedId={expandedGenerationId}
+        onUserToggle={setExpandedManual}
+        onClose={() => {
+          userDismissedRef.current = false;
+          setPanelOpenForSession(false);
+        }}
+        isGenerating={isGenerating}
+      />
+    </div>
+  );
+}
+
+type GenerationStatusBadgeProps = {
+  status: GenerationStatus;
+};
+
+function GenerationStatusBadge({ status }: GenerationStatusBadgeProps) {
+  const meta: Record<GenerationStatus, { label: string; bg: string; text: string; dot: string }> = {
+    pending: { label: "Pending", bg: "bg-zinc-100", text: "text-zinc-700", dot: "bg-zinc-500" },
+    "in-progress": { label: "Thinking", bg: "bg-amber-100", text: "text-amber-700", dot: "bg-amber-500" },
+    completed: { label: "Completed", bg: "bg-emerald-100", text: "text-emerald-700", dot: "bg-emerald-500" },
+    failed: { label: "Failed", bg: "bg-red-100", text: "text-red-700", dot: "bg-red-500" },
+  };
+  const config = meta[status];
+  return (
+    <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${config.bg} ${config.text}`}>
+      <span className={`h-2 w-2 rounded-full ${config.dot}`} aria-hidden="true" />
+      {config.label}
+    </span>
+  );
+}
+
+type GenerationLogsPanelProps = {
+  open: boolean;
+  generations: GenerationRun[];
+  expandedId: string | null;
+  onUserToggle: (id: string | null) => void;
+  onClose: () => void;
+  isGenerating: boolean;
+};
+
+function GenerationLogsPanel({ open, generations, expandedId, onUserToggle, onClose, isGenerating }: GenerationLogsPanelProps) {
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <>
+      <aside className="relative hidden h-full w-[24rem] flex-shrink-0 overflow-hidden rounded-3xl border border-zinc-200 bg-white px-5 py-6 shadow-sm lg:flex lg:flex-col">
+        <PanelContents
+          generations={generations}
+          expandedId={expandedId}
+          onUserToggle={onUserToggle}
+          onClose={onClose}
+          isGenerating={isGenerating}
+        />
+      </aside>
+      <div className="fixed inset-0 z-30 bg-black/20 backdrop-blur-sm md:hidden" onClick={onClose} />
+      <div className="fixed inset-y-0 right-0 z-40 flex h-full w-full max-w-md flex-col border-l border-zinc-200 bg-white px-5 py-6 shadow-2xl md:hidden">
+        <PanelContents
+          generations={generations}
+          expandedId={expandedId}
+          onUserToggle={onUserToggle}
+          onClose={onClose}
+          isGenerating={isGenerating}
+        />
+      </div>
+    </>
+  );
+}
+
+type PanelContentsProps = {
+  generations: GenerationRun[];
+  expandedId: string | null;
+  onUserToggle: (id: string | null) => void;
+  onClose: () => void;
+  isGenerating: boolean;
+};
+
+function PanelContents({ generations, expandedId, onUserToggle, onClose, isGenerating }: PanelContentsProps) {
+  const ordered = useMemo(() => [...generations].sort((a, b) => a.index - b.index), [generations]);
+  const newestId = ordered[ordered.length - 1]?.id ?? null;
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-zinc-500">Diagnostics</p>
+          <p className="text-base font-semibold text-zinc-900">Generation Logs</p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 text-lg text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-900"
+          aria-label="Close diagnostics panel"
+        >
+          ×
+        </button>
+      </div>
+      <div className="mt-4 flex-1 overflow-y-auto pr-1">
+        {ordered.length === 0 ? (
+          <p className="text-sm text-zinc-500">No generations yet. Run a request to inspect logs.</p>
+        ) : (
+          <ul className="space-y-3">
+            {ordered.map((generation: GenerationRun) => {
+              const isExpanded = expandedId === generation.id;
+              return (
+                <GenerationListItem
+                  key={generation.id}
+                  generation={generation}
+                  isExpanded={isExpanded}
+                  onToggle={() => onUserToggle(isExpanded ? null : generation.id)}
+                  isLatest={generation.id === newestId}
+                  isGenerating={isGenerating}
+                />
+              );
+            })}
+          </ul>
+        )}
       </div>
     </div>
   );
+}
+
+type GenerationListItemProps = {
+  generation: GenerationRun;
+  isExpanded: boolean;
+  onToggle: () => void;
+  isLatest: boolean;
+  isGenerating: boolean;
+};
+
+function GenerationListItem({ generation, isExpanded, onToggle, isLatest, isGenerating }: GenerationListItemProps) {
+  const status = deriveGenerationStatus(generation, isLatest, isGenerating);
+  const durationMs = computeDurationMs(generation, status === "in-progress");
+  const durationLabel = durationMs ? formatDuration(durationMs) : null;
+  const summaryContent = generation.summary?.content ?? null;
+  const requestPreview = generation.request?.content ?? "No request captured for this generation.";
+
+  return (
+    <li className="rounded-2xl border border-zinc-100 bg-zinc-50 px-4 py-4">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold text-zinc-900">Generation {generation.index}</p>
+          <p className="text-xs text-zinc-500">{formatFullTimestamp(generation.startedAt)}</p>
+        </div>
+        <GenerationStatusBadge status={status} />
+      </div>
+      {summaryContent ? (
+        <div className="prose prose-sm mt-3 text-sm text-zinc-800">
+          <ReactMarkdown>{summaryContent}</ReactMarkdown>
+        </div>
+      ) : null}
+      <div className="mt-3 rounded-2xl border border-zinc-200 bg-white px-3 py-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Request</p>
+        <p className="mt-1 whitespace-pre-line text-sm text-zinc-800">{requestPreview}</p>
+      </div>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={isExpanded}
+        className="mt-3 flex w-full items-center justify-between rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold text-zinc-700 transition hover:border-zinc-300 hover:text-zinc-900"
+      >
+        <span className="inline-flex items-center gap-2">
+          Detailed logs
+          <svg
+            className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-180" : "rotate-0"}`}
+            viewBox="0 0 20 20"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <path d="M5 7l5 6 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
+        <span className="text-xs font-normal text-zinc-500">
+          {status === "in-progress"
+            ? "Thinking…"
+            : durationLabel
+              ? `Thought for ${durationLabel}`
+              : "Duration unavailable"}
+        </span>
+      </button>
+      {isExpanded ? (
+        <div className="mt-3 rounded-2xl border border-zinc-100 bg-white px-3 py-3">
+          {generation.logs.length === 0 ? (
+            <p className="text-xs text-zinc-500">No detailed logs captured for this run.</p>
+          ) : (
+            <ul className="space-y-2 text-sm text-zinc-800">
+              {generation.logs.map((log: GenerationLogEntry) => (
+                <li key={log.id} className="flex gap-3" title={formatLogTimestamp(log.timestamp)}>
+                  <span className={`mt-1 h-2 w-2 flex-shrink-0 rounded-full ${logLevelDotClass(log.level)}`} aria-hidden="true" />
+                  <div className="flex flex-col">
+                    <span className={`text-[11px] font-semibold uppercase tracking-wide ${logLevelClass(log.level)}`}>
+                      {(log.level ?? "info").toUpperCase()}
+                    </span>
+                    <p className="leading-snug text-zinc-800">{log.content}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+type MessageKind = "prompt" | "summary" | "log";
+
+type TempGenerationRun = {
+  id: string;
+  logs: GenerationLogEntry[];
+  request?: ChatMessage;
+  summary?: ChatMessage;
+  startedAt: string;
+  lastUpdatedAt: string;
+};
+
+// Groups raw chat entries into per-generation runs so the panel can render an ordered log history.
+function buildGenerationRuns(messages: ChatMessage[]): GenerationRun[] {
+  const runs: GenerationRun[] = [];
+  let current: TempGenerationRun | null = null;
+
+  const finalize = () => {
+    if (!current) {
+      return;
+    }
+    const runIndex = runs.length + 1;
+    const startedAt = current.request?.timestamp ?? current.startedAt;
+    runs.push({
+      id: current.id || `generation-${runIndex}`,
+      index: runIndex,
+      logs: [...current.logs],
+      request: current.request,
+      summary: current.summary,
+      startedAt,
+      lastUpdatedAt: current.lastUpdatedAt,
+    });
+    current = null;
+  };
+
+    const ensureRun = (seed: ChatMessage): TempGenerationRun => {
+      if (current) {
+        return current;
+      }
+      current = {
+        id: seed.id,
+        logs: [],
+        request: undefined,
+        summary: undefined,
+        startedAt: seed.timestamp,
+        lastUpdatedAt: seed.timestamp,
+      };
+      return current;
+    };
+
+  messages.forEach((message) => {
+    const kind = resolveMessageKind(message);
+    if (kind === "prompt") {
+      finalize();
+      current = {
+        id: message.id,
+        logs: [],
+        request: message,
+        summary: undefined,
+        startedAt: message.timestamp,
+        lastUpdatedAt: message.timestamp,
+      };
+      return;
+    }
+
+    const target = ensureRun(message);
+
+    if (kind === "log") {
+      const lines = splitLogLines(message.content);
+      lines.forEach((line, lineIndex) => {
+        target.logs.push({
+          id: `${message.id}-${lineIndex}`,
+          content: line,
+          timestamp: message.timestamp,
+          level: message.level ?? "info",
+        });
+      });
+      target.lastUpdatedAt = message.timestamp;
+      return;
+    }
+
+    target.summary = message;
+    target.lastUpdatedAt = message.timestamp;
+  });
+
+  finalize();
+  return runs;
+}
+
+function resolveMessageKind(message: ChatMessage): MessageKind {
+  if (message.metadata?.kind === "prompt") {
+    return "prompt";
+  }
+  if (message.metadata?.kind === "log") {
+    return "log";
+  }
+  if (message.metadata?.kind === "summary" || message.metadata?.kind === "system") {
+    return "summary";
+  }
+  if (message.role === "user") {
+    return "prompt";
+  }
+  return "summary";
+}
+
+function splitLogLines(content: string): string[] {
+  return content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function deriveGenerationStatus(run: GenerationRun, isLatest: boolean, isGenerating: boolean): GenerationStatus {
+  const level = run.summary?.level;
+  if (level === "error") {
+    return "failed";
+  }
+  if (level === "success") {
+    return "completed";
+  }
+  if (isLatest && isGenerating) {
+    return "in-progress";
+  }
+  if (run.logs.length > 0) {
+    return "completed";
+  }
+  return "pending";
+}
+
+function computeDurationMs(run: GenerationRun, isActive: boolean): number | null {
+  const startRaw = run.request?.timestamp ?? run.logs[0]?.timestamp ?? run.summary?.timestamp ?? run.startedAt;
+  const start = Date.parse(startRaw);
+  if (Number.isNaN(start)) {
+    return null;
+  }
+  if (isActive) {
+    return Math.max(0, Date.now() - start);
+  }
+  const lastLog = run.logs.length ? run.logs[run.logs.length - 1].timestamp : undefined;
+  const endRaw = run.summary?.timestamp ?? lastLog ?? run.lastUpdatedAt ?? startRaw;
+  const end = Date.parse(endRaw);
+  if (Number.isNaN(end) || end <= start) {
+    return null;
+  }
+  return end - start;
+}
+
+function formatDuration(milliseconds: number): string {
+  const totalSeconds = Math.max(1, Math.round(milliseconds / 1000));
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`;
+  }
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes < 60) {
+    return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return remainingMinutes ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+}
+
+function formatFullTimestamp(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "Unknown";
+  }
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function formatLogTimestamp(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "--";
+  }
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(date);
+}
+
+function logLevelClass(level?: "info" | "success" | "error"): string {
+  switch (level) {
+    case "success":
+      return "text-emerald-600";
+    case "error":
+      return "text-red-600";
+    default:
+      return "text-zinc-500";
+  }
+}
+
+function logLevelDotClass(level?: "info" | "success" | "error"): string {
+  switch (level) {
+    case "success":
+      return "bg-emerald-500";
+    case "error":
+      return "bg-red-500";
+    default:
+      return "bg-zinc-500";
+  }
 }
 
 function WelcomePanel() {
@@ -128,12 +642,14 @@ function ArtifactCard({ label, icon, payload }: ArtifactCardProps) {
   const isPdf = payload.mimeType === "application/pdf";
   const canCopy = Boolean(payload.content && payload.content.trim().length);
   const downloadName = payload.mimeType === "application/msword" ? "cover-letter.doc" : undefined;
-  const downloadUrl = buildSecureDownloadUrl(payload);
+  const previewUrl = buildSecureDownloadUrl(payload, { disposition: "inline" });
+  const downloadUrl = buildSecureDownloadUrl(payload, { disposition: "attachment" }) ?? previewUrl;
   const metadataLines = [
     payload.mimeType ? `Type: ${payload.mimeType}` : null,
     payload.pageCount ? `Pages: ${payload.pageCount}` : null,
     payload.emailAddresses?.length ? `Emails: ${payload.emailAddresses.join(", ")}` : null,
   ].filter(Boolean);
+  const changeSummary = payload.changeSummary?.trim() ?? "";
 
   const handleCopy = () => {
     if (payload.content && typeof navigator !== "undefined" && navigator.clipboard) {
@@ -172,10 +688,18 @@ function ArtifactCard({ label, icon, payload }: ArtifactCardProps) {
       {metadataLines.length ? (
         <p className="mt-1 text-xs text-zinc-500">{metadataLines.join(" · ")}</p>
       ) : null}
-      {isPdf && payload.downloadUrl ? (
+      {label === "CV" && changeSummary ? (
+        <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Changes Made</p>
+          <div className="prose prose-sm mt-2 text-sm text-emerald-800">
+            <ReactMarkdown>{changeSummary}</ReactMarkdown>
+          </div>
+        </div>
+      ) : null}
+      {isPdf && previewUrl ? (
         <div className="mt-3 space-y-3">
           <iframe
-            src={`${payload.downloadUrl}#toolbar=0&view=FitH`}
+            src={`${previewUrl}#toolbar=0&view=FitH`}
             title={`${label} preview`}
             className="min-h-[26rem] w-full rounded-xl border border-zinc-200"
           />
@@ -202,7 +726,7 @@ function ColdEmailCard({ icon, payload }: ColdEmailCardProps) {
   const subject = payload.subject || "Warm introduction";
   const body = payload.body || payload.content;
   const mailto = buildMailtoLink(toAddress, subject, body);
-  const downloadUrl = buildSecureDownloadUrl(payload);
+  const downloadUrl = buildSecureDownloadUrl(payload, { disposition: "attachment" });
 
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
@@ -279,9 +803,23 @@ function buildMailtoLink(to: string, subject: string, body: string): string {
   return `mailto:${encodeURIComponent(sanitizedTo)}?subject=${encodedSubject}&body=${encodedBody}`;
 }
 
-function buildSecureDownloadUrl(payload: ArtifactPayload): string | null {
-  if (payload.storageKey) {
-    return `/api/download?key=${encodeURIComponent(payload.storageKey)}`;
+type DownloadUrlOptions = {
+  disposition?: "inline" | "attachment";
+};
+
+function buildSecureDownloadUrl(payload: ArtifactPayload, options?: DownloadUrlOptions): string | null {
+  const baseUrl = payload.storageKey
+    ? `/api/download?key=${encodeURIComponent(payload.storageKey)}`
+    : payload.downloadUrl ?? null;
+
+  if (!baseUrl) {
+    return null;
   }
-  return payload.downloadUrl ?? null;
+
+  if (!payload.storageKey || !options?.disposition) {
+    return baseUrl;
+  }
+
+  const separator = baseUrl.includes("?") ? "&" : "?";
+  return `${baseUrl}${separator}disposition=${options.disposition}`;
 }

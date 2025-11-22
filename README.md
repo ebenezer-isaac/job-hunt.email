@@ -1,267 +1,245 @@
-# CV Customiser (Next.js + Firebase)
+# Job Hunt Assistant (AI-Powered)
 
-AI assistant that builds job-ready CVs, cover letters, and cold emails from a single interface. The Next.js App Router stack orchestrates Gemini prompts, LaTeX rendering, Firebase auth, Firestore session storage, and quota enforcement so the entire system can be deployed on a single VM.
+**Stop manually tweaking your CV. Let AI do it.**
 
-## Table of Contents
+This is an open-source, AI-powered workbench that helps you land your dream job by automating the tedious parts of the application process. It uses Google's Gemini AI to tailor your CV, write compelling cover letters, and draft personalized cold emails based on job descriptions.
 
-1. [Overview](#overview)
-2. [Architecture at a Glance](#architecture-at-a-glance)
-3. [Prerequisites](#prerequisites)
-4. [Required CV Inputs](#required-cv-inputs)
-5. [Setup & Installation](#setup--installation)
-6. [Running Locally](#running-locally)
-7. [Production Deployment](#production-deployment)
-8. [Security & Access Control](#security--access-control)
-9. [Directory Reference](#directory-reference)
-10. [Troubleshooting](#troubleshooting)
-11. [Contributing & License](#contributing--license)
+**Why use this?**
+*   **Tailored CVs**: Automatically rewrites your CV to match specific job descriptions using LaTeX for professional formatting.
+*   **Smart Cover Letters**: Generates cover letters that actually make sense and reference your relevant experience.
+*   **Cold Outreach**: Drafts personalized emails to recruiters and hiring managers.
+*   **Contact Finding**: (Optional) Integrates with Apollo.io to find verified email addresses for key contacts.
+*   **Privacy Focused**: You host it yourself. Your data stays with you (and Google/Firebase/Apollo, but not a third-party SaaS).
 
-## Overview
+---
 
-- 🔥 **Dual workflows** – “Hot” job posting mode and “Cold” company outreach mode share the same chat UI.
-- 🧠 **Layered AI prompts** – 12 Gemini prompts coordinate CV surgery, cover-letter drafting, cold-email personalization, recon, and refinement.
-- 🧾 **Session persistence** – Firestore stores chat history, artifacts, and quotas so users can resume any conversation.
-- 📡 **Streaming feedback** – Server-Sent Events push progress logs into the UI while generation runs.
-- 🛡️ **Hardened perimeter** – Firebase auth middleware, internal access tokens, SSRF/IP blocking, and token quotas keep the beta closed.
+## Features
 
-## Architecture at a Glance
+*   **CV Customization**: Upload your "Master CV" and a job description, and get a perfectly tailored PDF.
+*   **Cover Letter Generator**: Creates matching cover letters in seconds.
+*   **Cold Email Drafts**: Generates outreach emails based on the company and role.
+*   **Research Briefs**: AI analyzes the company and role to give you talking points for interviews.
+*   **Quota System**: Built-in usage limits to manage API costs.
 
-| Layer | Tech | Notes |
-| --- | --- | --- |
-| Web / API | Next.js 15 (App Router) | Server actions power orchestration.
-| Auth | Firebase Auth + secure cookies | Middleware injects UID/email headers and enforces allowlist.
-| Data | Firestore + Firebase Storage | Sessions, quotas, allowlist config, and artifacts.
-| AI | Google Gemini (Pro/Flash/Embeddings) + Apollo.io (optional) | Prompts live in `src/prompts.json`.
-| Rendering | LaTeX via `pdflatex` + Poppler `pdftotext` | Ensures 2-page CV validation.
-| Logging | Structured server logger + request-scoped IDs | Internal access-control checks cached for 60s.
+---
 
 ## Prerequisites
 
-| Requirement | Windows | macOS | Ubuntu/Debian |
-| --- | --- | --- | --- |
-| **Node.js 20+** | [nodejs.org](https://nodejs.org) installer | `brew install node@20` | `curl -fsSL https://deb.nodesource.com/setup_20.x \| sudo -E bash -` then `sudo apt install -y nodejs` |
-| **Git** | [git-scm.com](https://git-scm.com/download/win) | `brew install git` | `sudo apt install -y git` |
-| **pdflatex** | Install [MiKTeX](https://miktex.org/download) | `brew install --cask mactex` | `sudo apt install -y texlive-full` |
-| **Poppler (pdftotext)** | [Download package](https://blog.alivate.com.au/poppler-windows/), add `bin` to PATH | `brew install poppler` | `sudo apt install -y poppler-utils` |
-| **PowerShell / Bash** | Windows Terminal or PowerShell 5.1+ | Default Terminal | Default shell |
+Before you start, make sure you have the following installed on your computer:
 
-Verify installations:
+1.  **Node.js** (v18 or higher): [Download Here](https://nodejs.org/)
+2.  **Git**: [Download Here](https://git-scm.com/downloads)
+3.  **LaTeX Distribution** (Required for generating PDFs):
+    *   **Windows**: [MiKTeX](https://miktex.org/download) (Recommended) or TeX Live.
+    *   **Mac**: [MacTeX](https://www.tug.org/mactex/) or `brew install --cask mactex`.
+    *   **Linux**: `sudo apt-get install texlive-full`.
+4.  **Poppler** (Required for reading PDFs):
+    *   **Windows**: [Download Binary](https://github.com/oschwartz10612/poppler-windows/releases/) (Add `bin` folder to your System PATH).
+    *   **Mac**: `brew install poppler`.
+    *   **Linux**: `sudo apt-get install poppler-utils`.
 
-```bash
-node -v
-git --version
-pdflatex --version
-pdftotext -v
-```
+---
 
-## Required CV Inputs
+## Step-by-Step Setup Guide
 
-The generator expects two source documents before you ever click “Generate”:
+Follow these steps to get the project running on your local machine.
 
-1. **Original CV (LaTeX, 2 pages)**
-   - This must be valid `.tex` source for the résumé you want Gemini to refactor.
-   - We recommend managing it in Overleaf or VS Code + LaTeX Workshop so you can copy the exact source into the app’s **Settings → Original 2-page CV** field.
-   - Keep the document constrained to two pages—`DocumentService` enforces `TARGET_PAGE_COUNT=2` and will retry/fail if the layout drifts.
-
-2. **Master / Extensive CV (text dump)**
-   - A long-form record of every role, project, metric, certification, publication, etc.
-   - Plain text or Markdown is fine; most teams export this from Notion/Google Docs.
-   - Paste it into **Settings → Extensive CV Context**. The AI uses it as a knowledge base when tailoring each artifact.
-
-> ✅ Tip: Create a `source_files/master-cv.md` (not checked in) containing your master dump, and a matching `original_cv.tex` you keep in sync with Overleaf. That way a new team member can follow these instructions and drop the same inputs into Settings.
-
-## Setup & Installation
-
-### 1. Clone the repo
+### 1. Clone the Repository
+Open your terminal (Command Prompt, PowerShell, or Terminal) and run:
 
 ```bash
 git clone https://github.com/ebenezer-isaac/job-hunt.email.git
 cd job-hunt.email
 ```
 
-### 2. Install dependencies
+### 2. Install Dependencies
+Run the following command to install the necessary code libraries:
 
 ```bash
 npm install
 ```
 
-### 3. Create `.env.local`
+### 3. Configure Environment Variables
+This project needs secrets (API keys) to work.
 
+1.  Copy the example environment file:
+    ```bash
+    cp .env.example .env.local
+    # On Windows PowerShell: copy .env.example .env.local
+    ```
+2.  Open `.env.local` in a text editor (like VS Code or Notepad). You will need to fill in the blanks.
+
+### 4. Setup Firebase (Database & Auth)
+This app uses Firebase for logging in and saving your data.
+
+1.  Go to the [Firebase Console](https://console.firebase.google.com/) and click **"Add project"**. Give it a name.
+2.  **Enable Authentication**:
+    *   Go to **Build > Authentication** in the sidebar.
+    *   Click **"Get started"**.
+    *   Select **Google** as a Sign-in provider, enable it, and save.
+3.  **Enable Firestore Database**:
+    *   Go to **Build > Firestore Database**.
+    *   Click **"Create database"**.
+    *   Select **Production mode** (we have rules to secure it).
+    *   Choose a location near you.
+4.  **Enable Storage**:
+    *   Go to **Build > Storage**.
+    *   Click **"Get started"**.
+    *   Start in **Production mode**.
+5.  **Get Admin Keys** (for the server):
+    *   Click the **Gear icon** (Project Settings) > **Service accounts**.
+    *   Click **"Generate new private key"**. This downloads a JSON file.
+    *   Open the JSON file. Copy the values to your `.env.local`:
+        *   `FIREBASE_PROJECT_ID` -> `project_id`
+        *   `FIREBASE_CLIENT_EMAIL` -> `client_email`
+        *   `FIREBASE_PRIVATE_KEY` -> `private_key` (Copy the whole string including `-----BEGIN PRIVATE KEY...`)
+6.  **Get Client Keys** (for the browser):
+    *   Go to **Project Settings > General**.
+    *   Scroll down to **"Your apps"** and click the **Web (</>)** icon.
+    *   Register the app (name it whatever you want).
+    *   Copy the config values to your `.env.local`:
+        *   `NEXT_PUBLIC_FIREBASE_API_KEY` -> `apiKey`
+        *   `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` -> `authDomain`
+        *   `NEXT_PUBLIC_FIREBASE_PROJECT_ID` -> `projectId`
+        *   `FIREBASE_STORAGE_BUCKET` -> `storageBucket`
+
+### 5. Setup Gemini AI
+1.  Go to [Google AI Studio](https://aistudio.google.com/).
+2.  Click **"Get API key"**.
+3.  Click **"Create API key in new project"**.
+4.  Copy the key and paste it into `.env.local` as `GEMINI_API_KEY`.
+
+### 6. Setup Apollo (Optional)
+*Required only if you want to find email addresses for cold outreach.*
+1.  Go to [Apollo.io](https://www.apollo.io/) and sign up.
+2.  Go to **Settings > Integrations > API**.
+3.  Click **"Create New Key"**.
+4.  Paste it into `.env.local` as `APOLLO_API_KEY`.
+*Note: CV customization and cover letters work fine without this.*
+
+### 7. Final Configuration
+You need to generate two secure random strings for security.
+Run this in your terminal (Node.js required):
 ```bash
-copy .env.example .env.local   # PowerShell (Windows)
-cp .env.example .env.local     # macOS/Linux
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
+*   Copy the output and paste it into `.env.local` for `ACCESS_CONTROL_INTERNAL_TOKEN`.
+*   Run it again and paste it for `FIREBASE_AUTH_COOKIE_SIGNATURE_KEYS`.
 
-### 4. Collect credentials & fill `.env.local`
+### 8. Admin Access (Recommended)
+To avoid manually editing the database to allow yourself in, set your email as the admin.
+*   In `.env.local`, set `ADMIN_EMAIL=your.email@gmail.com`.
+*   This gives you instant access and a higher usage quota (1000 tokens).
 
-Every variable in `.env.example` is documented inline. The quick-start version for non-engineers:
-
-1. **Google Gemini (content generation)**
-   1. Visit <https://makersuite.google.com/app/apikey>.
-   2. Click **Create API key**, copy it, and paste into `GEMINI_API_KEY`.
-   3. Leave the model names alone unless you have custom access.
-
-2. **Firebase project (auth + data + storage)**
-   1. Go to <https://console.firebase.google.com>, click **Add project**, follow the wizard.
-   2. Under **Build → Firestore Database**, create a database (production mode).
-   3. Under **Build → Storage**, click **Get started** to provision the default bucket.
-   4. Open **Project settings → General** → scroll to “Your apps”, add a **Web app**, and copy:
-      - `NEXT_PUBLIC_FIREBASE_API_KEY`
-      - `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
-      - `NEXT_PUBLIC_FIREBASE_PROJECT_ID`
-   5. Switch to the **Service accounts** tab, click “Generate new private key”, then copy the JSON values into:
-      - `FIREBASE_PROJECT_ID`
-      - `FIREBASE_CLIENT_EMAIL`
-      - `FIREBASE_PRIVATE_KEY` (keep quotes, replace literal newlines with `\n`).
-   6. Storage bucket name (e.g., `my-app.appspot.com`) goes in `FIREBASE_STORAGE_BUCKET`.
-
-3. **Firebase auth cookies (server sessions)**
-   - Generate secrets (run in any terminal):
-     ```bash
-     node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-     ```
-   - Paste two comma-separated values into `FIREBASE_AUTH_COOKIE_SIGNATURE_KEYS` so you can rotate later.
-
-4. **Apollo.io (optional contact enrichment)**
-   - Navigate to <https://app.apollo.io/#/settings/developer> → **Create Key** → assign to `APOLLO_API_KEY`.
-   - Skip if you don’t need automatic outreach contacts (the app will fallback gracefully).
-
-5. **Internal access control token**
-   - Protects `/api/log` and `/api/internal/*` routes. Generate once:
-     ```powershell
-     # Windows PowerShell
-     [Convert]::ToBase64String((1..48 | % { Get-Random -Maximum 256 }))
-     ```
-     ```bash
-     # macOS / Linux
-     head -c 48 /dev/urandom | base64
-     ```
-   - Paste into both `ACCESS_CONTROL_INTERNAL_TOKEN` and the Firebase Functions/Edge runtime if you deploy elsewhere.
-
-6. **Contact email + repo metadata**
-   - Set `CONTACT_EMAIL` and `NEXT_PUBLIC_CONTACT_EMAIL` to the support inbox you want surfaced in the UI.
-   - `NEXT_PUBLIC_REPO_URL` should point to your fork if you plan to open-source it.
-
-7. **LaTeX + content tuning**
-   - `PDFLATEX_COMMAND` can stay `pdflatex` if it’s globally available; otherwise set an absolute path.
-   - `MAX_CONTENT_LENGTH`, `TARGET_PAGE_COUNT`, and `SMOKE_TEST_ALLOWED_EMAILS` rarely need changing, but they are exposed for compliance-heavy orgs.
-
-### 5. Seed access control
-
-The server auto-creates `app_config/security/accessControl/config` on first run, but you must edit it immediately (Firebase Console → Firestore) to include at least one UID/email:
-
-```json
-{
-  "allowedUids": [],
-  "allowedEmails": ["you@example.com"],
-  "defaultQuota": 150,
-  "holdTimeoutMinutes": 60
-}
-```
-
-Each authenticated user also needs a profile under `userProfiles/{uid}`. The first login auto-creates one; admins can bump quotas by editing `quota.totalAllocated` and `quota.remaining` plus appending to `allocations`.
-
-### 6. Deploy Firebase security rules
-
-```powershell
-firebase deploy --only firestore:rules
-```
-
-Rules ensure sessions are owner-scoped and the allowlist doc stays server-only.
-
-## Running Locally
-
-```powershell
-# Development server with hot reload
+### 9. Run the Application
+```bash
 npm run dev
+```
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-# Type-safe linting (required before PRs)
+### 10. Whitelist Others (Optional)
+The app is "invite-only" by default. If you didn't set `ADMIN_EMAIL`, or want to invite others:
+1.  Go to your [Firebase Console](https://console.firebase.google.com/) > **Firestore Database**.
+2.  Navigate to `app_config` > `security` > `accessControl` > `config`.
+3.  Edit the document. Add the email to the `allowedEmails` array field.
 
+---
 
-# Unit / integration tests
-npm test
+## Usage Guide
 
-# Production build preview
-npm run build
-npm start
+1.  **Settings**: Go to the Settings tab. Upload your "Original CV" (LaTeX format) and fill in your "Extensive CV" (a text dump of everything you've ever done).
+2.  **New Session**: Go to the home page. Paste a Job Description URL or text.
+3.  **Generate**: Click "Generate". The AI will research the company, rewrite your CV, and draft a cover letter.
+4.  **Download**: Once done, you can download the PDF or copy the text.
+
+---
+
+## Technical Architecture
+
+*For developers, architects, and contributors.*
+
+This project is a **serverless, stateless Next.js application** designed for high availability and security. It leverages the **Next.js App Router** for the frontend and API layer, while offloading state to **Firebase** and heavy compute (AI inference) to **Google Gemini**.
+
+### Core Stack
+
+*   **Framework**: Next.js 14 (App Router) - *Server Actions for backend logic.*
+*   **Runtime**: Node.js 18+ (Compatible with Cloud Run / Docker).
+*   **Database**: Firebase Firestore - *NoSQL document store for sessions and user profiles.*
+*   **Object Storage**: Firebase Storage - *Persists generated PDFs and text artifacts.*
+*   **Authentication**: Firebase Auth + `next-firebase-auth-edge` - *Edge-compatible JWT validation.*
+*   **AI Inference**: Google Gemini Pro (Reasoning) & Flash (Speed).
+*   **Document Engine**: LaTeX (`pdflatex`) + Poppler (`pdftotext`).
+
+### System Design & Data Flow
+
+```mermaid
+flowchart LR
+  Client[Client Browser] <-->|Streaming RPC| Actions[Server Actions]
+  
+  subgraph "Serverless Container (Cloud Run)"
+    Actions -->|1. Validate & Hold Quota| Security[Security Module]
+    Actions -->|2. Prompt Engineering| AI[AI Service]
+    Actions -->|4. Compile & Sanitize| Latex[LaTeX Sandbox]
+  end
+
+  subgraph "External Services"
+    AI <-->|Inference| Gemini[Google Gemini API]
+    AI <-->|Enrichment| Apollo[Apollo.io API]
+  end
+
+  subgraph "Persistence Layer"
+    Security <-->|Read/Write| Firestore[(Firestore)]
+    Latex -->|Upload| Storage[(Firebase Storage)]
+  end
+
+  Actions -->|3. Stream Updates| Client
 ```
 
-If LaTeX binaries live outside `PATH`, point `PDFLATEX_COMMAND` to the absolute location (e.g., `"C:\\Program Files\\MiKTeX 2.9\\miktex\\bin\\x64\\pdflatex.exe"`).
+### Key Architectural Decisions
 
-### Scheduled cleanup
+#### 1. The "Surgical" LaTeX Engine (`src/lib/document-service.ts`)
+Unlike typical HTML-to-PDF converters, this project uses **LaTeX** for professional typesetting.
+*   **Sandboxed Compilation**: Every compilation request spawns a fresh, isolated temporary directory (`/tmp/cv-latex-xyz`).
+*   **Security Hardening**: The compiler explicitly blocks RCE vectors. We scan for and reject dangerous primitives like `\write18` (shell execution), `\openout` (file writing), and `\usepackage{shellesc}` before the compiler ever runs.
+*   **Double-Pass Compilation**: `pdflatex` is invoked twice per document to correctly resolve cross-references and layout calculations.
+*   **Page Count Heuristics**: The system uses `pdf-parse` to inspect the generated PDF. If the output deviates from the target (e.g., 2 pages), it triggers a **self-correction loop** where the AI is fed the error and asked to condense or expand the content.
 
-Processing sessions older than 45 minutes are auto-failed and refunded by running:
+#### 2. Hierarchical Constraint Prompts (HCP)
+We don't just ask the AI to "write a CV." We use a strict prompting framework defined in `src/prompts.json`.
+*   **Level 1 (Format)**: Enforces strict JSON or raw LaTeX output (no Markdown blocks).
+*   **Level 2 (Structure)**: Defines the exact schema or document layout.
+*   **Level 3 (Content)**: The actual creative task (e.g., "Map these 3 keywords to the candidate's experience").
+*   **Persona Injection**: The AI adopts specific personas (e.g., "Dr. Sarah Chen, PhD in IO Psychology") to maintain a consistent, professional tone across different tasks.
 
-```powershell
-npx tsx scripts/expire-processing.ts
+#### 3. Edge-Compatible Authentication
+We use `next-firebase-auth-edge` in `src/middleware.ts`.
+*   **Zero-Latency Auth**: Authentication is verified at the edge before the request hits the server container.
+*   **Custom Claims**: We use custom claims and Firestore lookups to enforce an "Invite-Only" allowlist system, preventing unauthorized usage of your API keys.
+
+#### 4. Robust AI Client (`src/lib/ai/model-client.ts`)
+*   **Model Routing**: Simple tasks (parsing job descriptions) are routed to **Gemini Flash** for speed and cost-efficiency. Complex reasoning (writing cover letters, strategic analysis) goes to **Gemini Pro**.
+*   **Resiliency**: The client implements exponential backoff for `429` (Rate Limit) and `503` (Service Unavailable) errors, ensuring long-running batch jobs don't fail due to transient API hiccups.
+
+### Directory Structure
+
+```text
+src/
+├── app/
+│   ├── actions/       # Server Actions (the "Backend API")
+│   └── api/           # REST endpoints for webhooks/streaming
+├── lib/
+│   ├── ai/            # Gemini client & Prompt templates
+│   ├── document-service.ts # The LaTeX compiler & sandbox
+│   ├── security/      # Quota management & Allowlist logic
+│   └── storage/       # Firebase Storage abstraction
+├── scripts/           # DevOps & Maintenance utilities
+└── prompts.json       # The "Brain" - all AI prompts are centralized here
 ```
 
-Schedule this via cron/Task Scheduler in production.
+## Contributing
 
-## Production Deployment
+We welcome contributions! Please fork the repository and submit a Pull Request.
 
-1. **Provision VM** (e.g., GCE e2-micro with Ubuntu 22.04). Open ports 80/443.
-2. **Install system deps**:
-   ```bash
-   sudo apt-get update && sudo apt-get install -y git nodejs npm texlive-full poppler-utils
-   ```
-3. **Clone & install**:
-   ```bash
-   git clone https://github.com/ebenezer-isaac/job-hunt.email.git
-   cd job-hunt.email
-   npm ci
-   ```
-4. **Add `.env.local`** (copy via SCP or secret manager).
-5. **Build once**: `npm run build`.
-6. **Run under a process manager**:
-   ```bash
-   npm install -g pm2
-   pm2 start npm --name job-hunt.email -- start
-   pm2 save
-   ```
-7. **Serve over HTTPS** using nginx/Cloud Load Balancer or a managed TLS endpoint.
+## License
 
-## Security & Access Control
-
-- 🔐 **Closed beta** – middleware calls `/api/internal/access-control/check` with `ACCESS_CONTROL_INTERNAL_TOKEN` to enforce the Firestore allowlist and token quotas before every request.
-- 🧮 **Quota holds** – generation places a 1-token hold; success commits it, failures refund it (plus the cleanup job guards against timeouts).
-- 🌐 **SSRF guardrails** – outbound fetches resolve DNS → IP, block loopback/private/link-local ranges, and enforce allowlists.
-- 🧪 **Request IDs everywhere** – middleware injects `x-request-id`, allowing logs to be correlated across middleware, route handlers, and storage writes.
-- 📑 **Audit logging** – `/api/log` captures server logs only when both an authenticated user and internal token are present.
-
-## Directory Reference
-
-```
-job-hunt.email/
-├── README.md                  # This file (root-level overview)
-├── src/
-│   ├── app/               # App Router routes, API handlers, server actions
-│   ├── components/        # UI building blocks
-│   ├── hooks/             # Client hooks (`useChat`, quota subscriptions,etc.)
-│   ├── lib/               # Auth, AI, logging, Firebase, quota, storage helpers
-│   ├── middleware.ts      # Firebase auth + access-control gate
-│   └── env.ts             # Zod-validated environment schema
-├── scripts/               # Maintenance tasks (export prompts, expire holds)
-├── source_files/          # CV/cover-letter/cold-email strategy corpora
-├── public/                # Static assets served by Next.js
-└── .env.local 
-```
-
-## Troubleshooting
-
-| Symptom | Fix |
-| --- | --- |
-| `ACCESS_CONTROL_INTERNAL_TOKEN` missing during `npm run build` | Generate a 32+ char secret (see setup step 6) and add it to `.env.local`. |
-| `pdflatex exited with code ...` | Ensure MiKTeX/TeX Live is installed and reachable; set `PDFLATEX_COMMAND` to the full path if needed. |
-| `ENOENT: pdftotext` | Poppler utilities are missing; install `poppler-utils`/`brew install poppler`/download Windows binaries. |
-| Firebase `permission-denied` | Confirm service account has Firestore + Storage roles and deploy the provided `firestore.rules`. |
-| Users stuck on login loop | Check the allowlist doc (`app_config/security/accessControl/config`) and confirm their UID/email is allowed. |
-| Token quota never refunds | Run `npx tsx scripts/expire-processing.ts` or inspect Firestore for stuck `sessions` with `processingDeadline` in the past. |
-
-## Contributing & License
-
-- Run `npm run lint && npm test` before opening a PR.
-- Keep secrets out of commits; `.env.local` is ignored.
-- Document new environment variables or scripts in this README.
-
-Licensed under the **MIT License**.
+MIT License

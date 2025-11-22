@@ -1,5 +1,12 @@
 import type { GeneratedFile, SessionStatus } from "@/lib/session";
 
+export type ChatMessageKind = "prompt" | "summary" | "log" | "system";
+
+export type ChatMessageMetadata = {
+  kind?: ChatMessageKind;
+  durationMs?: number;
+} | null;
+
 export type SerializableChatMessage = {
   id: string;
   role: "user" | "assistant" | "system";
@@ -7,6 +14,8 @@ export type SerializableChatMessage = {
   timestamp: string;
   level?: "info" | "success" | "error";
   isMarkdown?: boolean;
+  metadata?: ChatMessageMetadata;
+  mergeDisabled?: boolean;
 };
 
 export type SerializableSession = {

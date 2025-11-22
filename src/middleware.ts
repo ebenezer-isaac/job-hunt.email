@@ -13,13 +13,19 @@ import {
   loginRedirectParamKey,
   shouldDebugAuth,
 } from "@/lib/auth-config";
-import { ACCESS_CONTROL_CHECK_PATH, LOGIN_STATUS_PARAM_KEY } from "@/lib/auth-shared";
 import {
+  ACCESS_CONTROL_CHECK_PATH,
+  LOGIN_STATUS_PARAM_KEY,
+} from "@/lib/auth-shared";
+import {
+  LOG_ENDPOINT_PATH,
   createConsoleLogTransport,
   createDebugLogger,
+  createHttpLogTransport,
   REQUEST_ID_HEADER,
   type DebugLogger,
 } from "@/lib/debug-logger";
+import type { LogLevel } from "@/lib/logging/types";
 import { INTERNAL_TOKEN_HEADER, getInternalToken } from "@/lib/security/internal-token";
 
 const REDIRECT_WHITELIST = [
@@ -37,6 +43,12 @@ bootstrapLogger.step("Auth middleware configured", {
 type AccessDecision = {
   allowed: boolean;
   expiresAt: number;
+  payload?: unknown;
+};
+
+type AccessDecisionResult = {
+  allowed: boolean;
+  payload: unknown;
 };
 
 const ACCESS_DECISION_TTL_MS = 60_000;
@@ -47,15 +59,36 @@ export function middleware(request: NextRequest) {
   const requestId = request.headers.get(REQUEST_ID_HEADER) ?? crypto.randomUUID();
   const forwardedHeaders = new Headers(request.headers);
   forwardedHeaders.set(REQUEST_ID_HEADER, requestId);
+  const internalToken = getInternalToken();
+  const serverOrigin = resolveServerOrigin(request);
+  const logTransport = internalToken
+    ? createHttpLogTransport(serverOrigin, {
+        headers: {
+          [INTERNAL_TOKEN_HEADER]: internalToken,
+        },
+      })
+    : createConsoleLogTransport();
 
   const middlewareLogger = createDebugLogger("middleware", {
     requestId,
-    transport: createConsoleLogTransport(),
+    transport: logTransport,
   });
 
+  middlewareLogger.step("Resolved server origin", { serverOrigin });
   middlewareLogger.step("Middleware invoked", {
+    method: request.method,
     pathname,
-    headers: Object.fromEntries(request.headers.entries()),
+    hasAuthorizationHeader: request.headers.has("authorization"),
+    hasCookies: request.headers.has("cookie"),
+  });
+
+  middlewareLogger.step("Internal token resolution", {
+    hasInternalToken: Boolean(internalToken),
+    tokenLength: internalToken?.length ?? 0,
+  });
+
+  middlewareLogger.step("Log transport selected", {
+    transportType: internalToken ? "http" : "console",
   });
 
   if (isBypassPath(pathname) || isPublicPagePath(pathname)) {
@@ -76,17 +109,39 @@ export function middleware(request: NextRequest) {
     handleValidToken: async (tokens, headers) => {
       const uid = tokens.decodedToken.uid;
       const email = tokens.decodedToken.email ?? null;
-      const allowed = await ensureUserAllowed(uid, email, request, requestId, middlewareLogger);
-      if (!allowed) {
-        middlewareLogger.warn("Valid token rejected due to allowlist", { uid, email });
+      
+      middlewareLogger.step("Validating token against allowlist", { uid, email });
+      
+      const decision = await ensureUserAllowed(
+        uid,
+        email,
+        request,
+        requestId,
+        middlewareLogger,
+        internalToken,
+        serverOrigin,
+      );
+      const debugPayload = decision.payload ?? null;
+      if (!decision.allowed) {
+        middlewareLogger.warn("Valid token rejected due to allowlist", { uid, email, debugPayload });
+        await persistEdgeLogEntry(
+          "warn",
+          "Valid token rejected due to allowlist",
+          { uid, email, decision: debugPayload },
+          requestId,
+          serverOrigin,
+          internalToken,
+          middlewareLogger,
+        );
         const redirectResponse = createLoginRedirectResponse(request, "allowlist-denied");
         redirectResponse.headers.set(REQUEST_ID_HEADER, requestId);
         return redirectResponse;
       }
-      middlewareLogger.step("Valid token detected", {
+      middlewareLogger.step("Valid token detected and allowed", {
         uid,
         email,
         metadata: tokens.metadata,
+        decision: debugPayload ?? null,
       });
       headers.set("x-user-uid", uid ?? "");
       if (email) {
@@ -135,17 +190,44 @@ async function ensureUserAllowed(
   request: NextRequest,
   requestId: string,
   logger: DebugLogger,
-): Promise<boolean> {
+  internalToken: string,
+  serverOrigin: string,
+): Promise<AccessDecisionResult> {
   const normalizedEmail = email?.trim() || null;
   const cacheKey = `${uid}:${normalizedEmail ?? ""}`;
   const cached = accessDecisionCache.get(cacheKey);
   const now = Date.now();
-  if (cached && cached.expiresAt > now) {
-    return cached.allowed;
-  }
+  if (cached) {
+    if (cached.expiresAt > now) {
+      logger.step("Access decision cache hit", {
+        uid,
+        email: normalizedEmail,
+        allowed: cached.allowed,
+      });
+      return { allowed: cached.allowed, payload: cached.payload ?? null };
+    }
+    logger.step("Access decision cache expired", {
+      uid,
+      email: normalizedEmail,
+      expiredAt: cached.expiresAt,
+    });
+    accessDecisionCache.delete(cacheKey);
+  } else {
+    logger.step("Access decision cache miss", { uid, email: normalizedEmail });
+    }
 
-  const endpoint = new URL(ACCESS_CONTROL_CHECK_PATH, request.nextUrl.origin);
-  const internalToken = getInternalToken();
+    const endpoint = new URL(ACCESS_CONTROL_CHECK_PATH, serverOrigin);
+  logger.step("Calling access-control endpoint", {
+    endpoint: endpoint.toString(),
+    uid,
+    email: normalizedEmail,
+  });
+  logger.info("Access-control fetch dispatching", {
+    endpoint: endpoint.toString(),
+    uid,
+    hasEmail: Boolean(normalizedEmail),
+    requestId,
+  });
   try {
     const response = await fetch(endpoint, {
       method: "POST",
@@ -158,33 +240,109 @@ async function ensureUserAllowed(
       cache: "no-store",
     });
 
+    logger.info("Access-control fetch completed", {
+      uid,
+      requestId,
+      status: response.status,
+      ok: response.ok,
+    });
+
     if (!response.ok) {
+      const errorText = await response.text().catch(() => null);
       logger.error("Access control endpoint returned non-200", {
         status: response.status,
         endpoint: endpoint.toString(),
+        bodySnippet: errorText ? errorText.slice(0, 512) : null,
       });
-      return false;
+      await persistEdgeLogEntry(
+        "error",
+        "Access control endpoint returned non-200",
+        {
+          uid,
+          email: normalizedEmail,
+          status: response.status,
+          bodySnippet: errorText ? errorText.slice(0, 256) : null,
+        },
+        requestId,
+        serverOrigin,
+        internalToken,
+        logger,
+      );
+      const failurePayload = {
+        status: response.status,
+        endpoint: endpoint.toString(),
+        bodySnippet: errorText ? errorText.slice(0, 256) : null,
+      };
+      return { allowed: false, payload: failurePayload };
     }
 
-    const payload = await response.json().catch(() => null);
+    const payload = await response.json().catch((jsonError) => {
+      logger.error("Failed to parse access control response JSON", {
+        endpoint: endpoint.toString(),
+        jsonError: jsonError instanceof Error ? jsonError.message : String(jsonError),
+      });
+      return null;
+    });
     const allowed = Boolean(payload?.allowed);
+    logger.step("Access control response received", {
+      status: response.status,
+      allowed,
+      payload,
+    });
+    logger.info("Access-control fetch payload", {
+      uid,
+      requestId,
+      allowed,
+      debugSource: payload?.debug?.emailResolution?.source ?? null,
+      hasResolvedEmail: Boolean(payload?.debug?.normalizedEmail),
+    });
     accessDecisionCache.set(cacheKey, {
       allowed,
       expiresAt: now + ACCESS_DECISION_TTL_MS,
+      payload,
     });
-    return allowed;
+    logger.step("Cached access decision", {
+      uid,
+      email: normalizedEmail,
+      allowed,
+      expiresAt: now + ACCESS_DECISION_TTL_MS,
+    });
+    return { allowed, payload };
   } catch (error) {
     logger.error("Access control fetch failed", {
       endpoint: endpoint.toString(),
       error: error instanceof Error ? error.message : String(error),
+      errorName: error instanceof Error ? error.name : typeof error,
+      stack: error instanceof Error ? error.stack : undefined,
     });
-    return false;
+    await persistEdgeLogEntry(
+      "error",
+      "Access control fetch failed",
+      {
+        uid,
+        email: normalizedEmail,
+        endpoint: endpoint.toString(),
+        error: error instanceof Error ? error.message : String(error),
+      },
+      requestId,
+      serverOrigin,
+      internalToken,
+      logger,
+    );
+    const failurePayload = {
+      endpoint: endpoint.toString(),
+      error: error instanceof Error ? error.message : String(error),
+    };
+    return { allowed: false, payload: failurePayload };
   }
 }
 
 type LoginStatusFlag = "allowlist-denied" | "invalid-token";
 
-function createLoginRedirectResponse(request: NextRequest, status: LoginStatusFlag): NextResponse {
+function createLoginRedirectResponse(
+  request: NextRequest,
+  status: LoginStatusFlag,
+): NextResponse {
   const response = redirectToLogin(request, {
     path: LOGIN_PAGE_PATH,
     redirectParamKeyName: loginRedirectParamKey,
@@ -202,4 +360,92 @@ function createLoginRedirectResponse(request: NextRequest, status: LoginStatusFl
     // preserve original redirect if URL parsing fails
   }
   return response;
+}
+
+function resolveServerOrigin(request: NextRequest): string {
+  const explicit = resolveExplicitOriginFromEnv();
+  if (explicit) {
+    return explicit;
+  }
+
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  if (forwardedProto && forwardedHost) {
+    return `${forwardedProto}://${forwardedHost}`;
+  }
+
+  const host = request.headers.get("host");
+  if (host) {
+    const protocol = forwardedProto ?? request.nextUrl.protocol?.replace(/:$/, "") ?? "https";
+    return `${protocol}://${host}`;
+  }
+
+  const requestOrigin = request.nextUrl.origin;
+  return requestOrigin ? trimTrailingSlash(requestOrigin) : "";
+}
+
+function resolveExplicitOriginFromEnv(): string | null {
+  const envOrigin =
+    process.env.APP_URL?.trim() ||
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined);
+  if (!envOrigin) {
+    return null;
+  }
+  return trimTrailingSlash(envOrigin);
+}
+
+function trimTrailingSlash(value: string): string {
+  return value.endsWith("/") ? value.slice(0, -1) : value;
+}
+
+async function persistEdgeLogEntry(
+  level: LogLevel,
+  message: string,
+  data: Record<string, unknown> | null,
+  requestId: string,
+  serverOrigin: string,
+  internalToken: string | null | undefined,
+  logger: DebugLogger,
+): Promise<void> {
+  if (!internalToken) {
+    logger.warn("Skipping Firestore log persistence: missing internal token", { message, level });
+    return;
+  }
+  try {
+    const endpoint = new URL(LOG_ENDPOINT_PATH, serverOrigin);
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        [REQUEST_ID_HEADER]: requestId,
+        [INTERNAL_TOKEN_HEADER]: internalToken,
+      },
+      body: JSON.stringify({
+        entry: {
+          timestamp: new Date().toISOString(),
+          scope: "middleware",
+          level,
+          message,
+          data: data ?? undefined,
+          requestId,
+        },
+      }),
+    });
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => null);
+      logger.error("Failed to persist middleware log entry via API", {
+        message,
+        level,
+        status: response.status,
+        bodySnippet: errorBody ? errorBody.slice(0, 256) : null,
+      });
+    }
+  } catch (error) {
+    logger.error("Middleware log persistence threw", {
+      message,
+      level,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }

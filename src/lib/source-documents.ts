@@ -9,7 +9,8 @@ export type SourceDocumentType =
   | "extensive_cv"
   | "cv_strategy"
   | "cover_letter_strategy"
-  | "cold_email_strategy";
+  | "cold_email_strategy"
+  | "recon_strategy";
 
 export type SourceDocumentRecord = {
   id: string;
@@ -25,6 +26,7 @@ export type SourceDocumentSnapshot = {
   cvStrategy: string;
   coverLetterStrategy: string;
   coldEmailStrategy: string;
+  reconStrategy: string;
   updatedAt: string | null;
 };
 
@@ -99,6 +101,7 @@ export async function getSourceDocumentsForUser(userId: string): Promise<SourceD
     cvStrategy: pick("cv_strategy"),
     coverLetterStrategy: pick("cover_letter_strategy"),
     coldEmailStrategy: pick("cold_email_strategy"),
+    reconStrategy: pick("recon_strategy"),
     updatedAt: latest?.updatedAt?.toISOString() ?? null,
   };
 }

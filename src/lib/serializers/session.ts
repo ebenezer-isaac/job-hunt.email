@@ -20,6 +20,7 @@ function mapChatHistory(entries: ChatLogEntry[]): SerializableChatMessage[] {
     content: entry.message,
     level: entry.level,
     timestamp: entry.timestamp,
+    metadata: { kind: "summary" },
   }));
 }
 

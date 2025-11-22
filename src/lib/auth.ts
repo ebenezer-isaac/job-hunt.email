@@ -27,7 +27,11 @@ export async function getServerAuthTokens(): Promise<AuthTokens | null> {
     ...tokenOptions,
     debug: shouldDebugAuth,
   });
-  authLogger.data("server-auth-tokens", tokens);
+  if (tokens) {
+    authLogger.step("Server auth tokens retrieved", { uid: tokens.decodedToken.uid });
+  } else {
+    authLogger.step("No server auth tokens found");
+  }
   return tokens;
 }
 

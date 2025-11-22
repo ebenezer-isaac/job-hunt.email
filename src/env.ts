@@ -34,13 +34,23 @@ const signatureKeysSchema = z
     message: "Cookie signature keys must be at least 32 characters",
   });
 
+const stripInvisibleBoundary = (value: unknown): unknown => {
+  if (typeof value !== "string") {
+    return value;
+  }
+  return value.replace(/\uFEFF/g, "").trim();
+};
+
 const serverSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
-  LOG_REQUEST_DEBUG: booleanFromEnv(false),
+  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("debug"),
+  LOG_REQUEST_DEBUG: booleanFromEnv(true),
   PORT: z.coerce.number().int().positive().default(3000),
   GEMINI_API_KEY: z.string().min(1, "GEMINI_API_KEY is required"),
-  APOLLO_API_KEY: z.string().min(1, "APOLLO_API_KEY is required"),
+  APOLLO_API_KEY: z
+    .string()
+    .optional()
+    .transform((value) => value?.trim() ?? ""),
   GEMINI_PRO_MODEL: z.string().default("gemini-2.5-pro"),
   GEMINI_FLASH_MODEL: z.string().default("gemini-2.5-flash"),
   GEMINI_EMBED_MODEL: z.string().default("text-embedding-004"),
@@ -57,7 +67,10 @@ const serverSchema = z.object({
   USER_NAME: z.string().default("ebenezer-isaac"),
   PDFLATEX_COMMAND: z.string().default("pdflatex"),
   SMOKE_TEST_ALLOWED_EMAILS: z.string().default(""),
-  FIREBASE_PROJECT_ID: z.string().min(1, "FIREBASE_PROJECT_ID is required"),
+  FIREBASE_PROJECT_ID: z.preprocess(
+    stripInvisibleBoundary,
+    z.string().min(1, "FIREBASE_PROJECT_ID is required"),
+  ),
   FIREBASE_CLIENT_EMAIL: z.string().email("Provide a valid FIREBASE_CLIENT_EMAIL"),
   FIREBASE_PRIVATE_KEY: z.string().min(1, "FIREBASE_PRIVATE_KEY is required"),
   FIREBASE_API_KEY: z.string().min(1, "FIREBASE_API_KEY is required"),
@@ -76,6 +89,7 @@ const serverSchema = z.object({
   FIREBASE_AUTH_COOKIE_DOMAIN: z.string().optional(),
   ACCESS_CONTROL_INTERNAL_TOKEN: z.string().min(32, "ACCESS_CONTROL_INTERNAL_TOKEN must be at least 32 characters"),
   CONTACT_EMAIL: z.string().email("CONTACT_EMAIL must be a valid email address"),
+  ADMIN_EMAIL: z.string().email().optional(),
 });
 
 const clientSchema = z.object({
@@ -89,9 +103,10 @@ const clientSchema = z.object({
   NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: z
     .string()
     .min(1, "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN is required"),
-  NEXT_PUBLIC_FIREBASE_PROJECT_ID: z
-    .string()
-    .min(1, "NEXT_PUBLIC_FIREBASE_PROJECT_ID is required"),
+  NEXT_PUBLIC_FIREBASE_PROJECT_ID: z.preprocess(
+    stripInvisibleBoundary,
+    z.string().min(1, "NEXT_PUBLIC_FIREBASE_PROJECT_ID is required"),
+  ),
   NEXT_PUBLIC_CONTACT_EMAIL: z
     .string()
     .email("NEXT_PUBLIC_CONTACT_EMAIL must be a valid email address"),

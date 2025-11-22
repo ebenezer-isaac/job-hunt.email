@@ -32,15 +32,14 @@ export default async function Home() {
     photoURL: tokens.decodedToken.picture ?? null,
   };
 
-  const [sessionRecords, storedDocuments, cvStrategy, coverLetterStrategy, coldEmailStrategy, defaultOriginal, defaultExtensive, usageProfile] =
+  const [sessionRecords, storedDocuments, cvStrategy, coverLetterStrategy, coldEmailStrategy, reconStrategy, usageProfile] =
     await Promise.all([
       sessionRepository.listSessions(userId),
       getSourceDocumentsForUser(userId),
       readSeedFile("cv_strat.txt"),
       readSeedFile("cover_letter.txt"),
       readSeedFile("cold_mail.txt"),
-      readSeedFile("original_cv.txt"),
-      readSeedFile("extensive_cv.txt"),
+      readSeedFile("recon_strat.txt"),
       ensureUserProfile({
         uid: userId,
         email: userProfile.email,
@@ -55,13 +54,15 @@ export default async function Home() {
     currentSessionId: serializedSessions[0]?.id ?? null,
     chatHistory: serializedSessions[0]?.chatHistory ?? [],
     sourceDocuments: {
-      originalCV: storedDocuments.originalCV || defaultOriginal,
-      extensiveCV: storedDocuments.extensiveCV || defaultExtensive,
+      originalCV: storedDocuments.originalCV,
+      extensiveCV: storedDocuments.extensiveCV,
       cvStrategy: storedDocuments.cvStrategy || cvStrategy || "Maintain ATS compliance and quantified impact per bullet.",
       coverLetterStrategy:
         storedDocuments.coverLetterStrategy || coverLetterStrategy || "Concise one-page letter highlighting 2-3 achievements.",
       coldEmailStrategy:
         storedDocuments.coldEmailStrategy || coldEmailStrategy || "Short, punchy cold email under 150 words.",
+      reconStrategy:
+        storedDocuments.reconStrategy || reconStrategy || "Deep-dive reconnaissance workflow for identifying decision-makers and signals.",
     },
   };
 

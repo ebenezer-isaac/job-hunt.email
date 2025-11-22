@@ -27,6 +27,7 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: __dirname,
   },
+  output: "standalone",
 };
 
 configLogger.data("next-config", nextConfig);

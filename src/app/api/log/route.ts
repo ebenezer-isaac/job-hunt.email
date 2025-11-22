@@ -3,6 +3,7 @@ import { appendLogEntry } from "@/lib/logging/server-log-writer";
 import type { LogEntry, LogLevel } from "@/lib/logging/types";
 import { createDebugLogger, REQUEST_ID_HEADER } from "@/lib/debug-logger";
 import { requireServerAuthTokens } from "@/lib/auth";
+import { INTERNAL_TOKEN_HEADER, isValidInternalRequest } from "@/lib/security/internal-token";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,17 +18,22 @@ const logger = createDebugLogger("api-log");
 
 export async function POST(request: Request) {
   const headerRequestId = request.headers.get(REQUEST_ID_HEADER);
+  const internalToken = request.headers.get(INTERNAL_TOKEN_HEADER);
+  const isInternal = internalToken ? isValidInternalRequest(internalToken) : false;
   logger.step("Incoming log ingestion request", {
     headerRequestId: headerRequestId ?? null,
+    authMode: isInternal ? "internal-token" : "session",
   });
-  try {
-    await requireServerAuthTokens();
-  } catch (authError) {
-    logger.warn("Unauthenticated log ingestion attempt", {
-      headerRequestId: headerRequestId ?? null,
-      error: authError instanceof Error ? authError.message : String(authError),
-    });
-    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  if (!isInternal) {
+    try {
+      await requireServerAuthTokens();
+    } catch (authError) {
+      logger.warn("Unauthenticated log ingestion attempt", {
+        headerRequestId: headerRequestId ?? null,
+        error: authError instanceof Error ? authError.message : String(authError),
+      });
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
   }
   try {
     const body = (await request.json()) as LogRequestBody;

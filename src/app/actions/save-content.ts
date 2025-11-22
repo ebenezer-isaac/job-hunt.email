@@ -14,6 +14,7 @@ const payloadSchema = z.object({
     "cv_strategy",
     "cover_letter_strategy",
     "cold_email_strategy",
+    "recon_strategy",
   ] as const),
   content: z.string().max(200_000, "Document content exceeds safe size limit"),
 });
@@ -25,6 +26,6 @@ export async function saveContentAction(input: SaveContentInput): Promise<{ succ
   const parsed = payloadSchema.parse(input);
   const tokens = await requireServerAuthTokens();
   await saveSourceDocument(tokens.decodedToken.uid, parsed.docType, parsed.content);
-  logger.step("Source document saved", { docType: parsed.docType, userId: tokens.decodedToken.uid });
+  logger.info("Source document saved successfully", { docType: parsed.docType, userId: tokens.decodedToken.uid });
   return { success: true };
 }

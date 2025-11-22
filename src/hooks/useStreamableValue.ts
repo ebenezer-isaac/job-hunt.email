@@ -13,6 +13,7 @@ export type ArtifactPayload = {
   subject?: string;
   body?: string;
   toAddress?: string;
+  changeSummary?: string;
 };
 
 export type GenerationArtifacts = {

@@ -1,0 +1,12 @@
+{
+  "entries": [
+    {
+      "logName": "projects/job-hunt-0111/logs/syslog",
+      "resource": {
+        "type": "global"
+      },
+      "textPayload": "CURL TEST LOG TO SYSLOG",
+      "severity": "INFO"
+    }
+  ]
+}

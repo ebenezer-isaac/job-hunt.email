@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { createSessionAction } from "@/app/actions/create-session";
 import { processJobInputAction, type NormalizedJobInput } from "@/app/actions/process-job-input";
 import { useSessionStore } from "@/store/session-store";
-import { useStreamableValue } from "@/hooks/useStreamableValue";
+import { useStreamableValue, type GenerationArtifacts } from "@/hooks/useStreamableValue";
 import { REQUEST_ID_HEADER, setClientRequestId } from "@/lib/debug-logger";
 import { clientEnv } from "@/lib/env-client";
 
@@ -155,6 +155,7 @@ export function useChat() {
         content: userContent,
         timestamp,
         isMarkdown: false,
+        metadata: { kind: "prompt" },
       };
 
       actions.appendChatMessage(sessionId, userMessage);
@@ -182,6 +183,7 @@ export function useChat() {
         content: summaryParts.join("\n"),
         timestamp: new Date().toISOString(),
         level: "info",
+        metadata: { kind: "summary" },
       });
 
       const formData = new FormData();
@@ -239,6 +241,8 @@ export function useChat() {
             content: line,
             timestamp: new Date().toISOString(),
             level: deriveLevel(line),
+            metadata: { kind: "log" },
+            mergeDisabled: true,
           });
         },
         onArtifacts(artifacts) {
@@ -247,6 +251,14 @@ export function useChat() {
           }
           actions.setGeneratedDocuments(sessionId, artifacts);
           actions.setSessionStatus(sessionId, "completed");
+          actions.appendChatMessage(sessionId, {
+            id: createMessageId(sessionId, "summary"),
+            role: "assistant",
+            content: buildArtifactSummary(artifacts),
+            timestamp: new Date().toISOString(),
+            level: "success",
+            metadata: { kind: "summary" },
+          });
           toast.success("Documents generated successfully");
         },
       });
@@ -273,6 +285,7 @@ export function useChat() {
           content: `Generation failed: ${message}`,
           timestamp: new Date().toISOString(),
           level: "error",
+          metadata: { kind: "summary" },
         });
       }
       toast.error(`Generation failed: ${message}`);
@@ -290,6 +303,33 @@ export function useChat() {
     sendMessage,
     isGenerating,
   };
+}
+
+function buildArtifactSummary(artifacts: GenerationArtifacts): string {
+  const available = Object.entries(artifacts)
+    .filter(([, value]) => Boolean(value))
+    .map(([key]) => formatArtifactLabel(key));
+  if (!available.length) {
+    return "Artifacts saved successfully.";
+  }
+  if (available.length === 1) {
+    return `${available[0]} ready.`;
+  }
+  const last = available.pop();
+  return `${available.join(", ")} and ${last} ready.`;
+}
+
+function formatArtifactLabel(key: string): string {
+  switch (key) {
+    case "cv":
+      return "CV";
+    case "coverLetter":
+      return "Cover Letter";
+    case "coldEmail":
+      return "Cold Email";
+    default:
+      return key;
+  }
 }
 
 function deriveLevel(line: string): "info" | "success" | "error" {

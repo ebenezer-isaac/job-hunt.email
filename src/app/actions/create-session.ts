@@ -43,5 +43,6 @@ export async function createSessionAction(input: CreateSessionInput) {
       ...(sanitizedContactEmail ? { contactEmail: sanitizedContactEmail } : {}),
     },
   });
+  logger.info("Session created successfully", { sessionId: record.id, userId: tokens.decodedToken.uid });
   return serializeSession(record);
 }

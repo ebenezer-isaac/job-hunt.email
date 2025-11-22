@@ -4,97 +4,24 @@ import { env } from "@/env";
 import { aiService, type AIService } from "@/lib/ai/service";
 import { createDebugLogger } from "@/lib/debug-logger";
 import { disambiguationService, type EmailStatus } from "@/lib/services/disambiguation-service";
+import { fetchJson } from "./apollo/client";
+import {
+  TARGET_ACQUISITION_CONFIG,
+  HIGH_CONFIDENCE_SCORE_THRESHOLD,
+  SENIORITY_LEVELS,
+} from "./apollo/config";
+import { scoreCandidate } from "./apollo/scoring";
+import {
+  ApolloCandidate,
+  EnrichResponse,
+  FindContactParams,
+  LogLevel,
+  MixedCompanyResponse,
+  Organization,
+  SearchResponse,
+} from "./apollo/types";
 
-const BASE_URL = "https://api.apollo.io/v1";
 
-const SENIORITY_LEVELS = ["owner", "founder", "c_suite", "partner", "vp", "head", "director"] as const;
-
-const TARGET_ACQUISITION_CONFIG = {
-  MAX_SEARCH_PAGES: 1,
-  RESULTS_PER_PAGE: 25,
-  SPAM_KEYWORDS: ["test", "sample", "demo", "fake", "example"],
-  FALLBACK_JOB_TITLES: ["CEO", "CTO", "VP of Engineering", "Engineering Manager", "Head of Engineering"],
-} as const;
-
-const SCORING = {
-  EXACT_NAME_MATCH: 200,
-  EXACT_COMPANY_MATCH: 300,
-  KEYWORD_COMPANY_MATCH: 50,
-  JOB_TITLE_MATCH: 30,
-  VERIFIED_EMAIL: 20,
-  GUESSED_EMAIL: 10,
-  SPAM_PENALTY_PER_INDICATOR: 1000,
-} as const;
-
-const HIGH_CONFIDENCE_SCORE_THRESHOLD = SCORING.EXACT_NAME_MATCH + SCORING.KEYWORD_COMPANY_MATCH;
-
-type LogLevel = "info" | "warning" | "error" | "success";
-
-type Organization = {
-  id?: string;
-  name?: string;
-  domain?: string;
-  estimated_num_employees?: number;
-};
-
-type ApolloCandidate = {
-  id?: string;
-  name?: string;
-  title?: string;
-  email?: string;
-  email_status?: string;
-  emailStatus?: string;
-  seniority?: string;
-  linkedin_url?: string;
-  linkedinUrl?: string;
-  organization?: Organization;
-};
-
-type SearchResponse = {
-  people?: ApolloCandidate[];
-  contacts?: ApolloCandidate[];
-};
-
-type MixedCompanyResponse = {
-  organizations?: Organization[];
-};
-
-type EnrichResponse = {
-  person?: ApolloCandidate | null;
-};
-
-type FindContactParams = {
-  personName: string;
-  companyName: string;
-  companyDomain: string;
-  logCallback?: (message: string, level?: LogLevel) => void;
-};
-
-const httpLogger = createDebugLogger("apollo-http");
-
-async function fetchJson<T>(path: string, init: RequestInit, timeoutMs: number): Promise<T> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(`${BASE_URL}${path}`, {
-      ...init,
-      headers: {
-        "Content-Type": "application/json",
-        "X-Api-Key": env.APOLLO_API_KEY,
-        ...(init.headers ?? {}),
-      },
-      signal: controller.signal,
-    });
-    if (!response.ok) {
-      const body = await response.text();
-      httpLogger.error("Apollo API request failed", { path, status: response.status, body });
-      throw new Error(`Apollo API responded with ${response.status}`);
-    }
-    return (await response.json()) as T;
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 export class ApolloService {
   private readonly timeout = env.SCRAPING_TIMEOUT;
@@ -148,7 +75,7 @@ export class ApolloService {
       log(`Person-centric search found ${personCentricCandidates.length} candidates`);
       const scored = personCentricCandidates.map((candidate) => ({
         candidate,
-        score: this.scoreCandidate(candidate, companyName, likelyJobTitles, personName),
+        score: scoreCandidate(candidate, companyName, likelyJobTitles, personName),
       }));
       scored.sort((a, b) => b.score - a.score);
       const top = scored[0];
@@ -175,7 +102,7 @@ export class ApolloService {
       ...(highConfidenceMatch ? [highConfidenceMatch] : []),
       ...roleCentricCandidates.map((candidate) => ({
         candidate,
-        score: this.scoreCandidate(candidate, companyName, likelyJobTitles, personName),
+        score: scoreCandidate(candidate, companyName, likelyJobTitles, personName),
       })),
     ];
 
@@ -311,97 +238,7 @@ export class ApolloService {
     return aggregated;
   }
 
-  private sanitize(value?: string): string {
-    return value?.toLowerCase().trim() ?? "";
-  }
 
-  private calculateSpamScore(candidate: ApolloCandidate): number {
-    let spamIndicators = 0;
-    const title = this.sanitize(candidate.title);
-    const company = this.sanitize(candidate.organization?.name);
-    const email = this.sanitize(candidate.email);
-    const name = this.sanitize(candidate.name);
-    const employeeCount = candidate.organization?.estimated_num_employees;
-
-    if (title && company && title === company && title.length > 5) {
-      spamIndicators += 1;
-    }
-    if (employeeCount === 0) {
-      spamIndicators += 1;
-    }
-    for (const keyword of TARGET_ACQUISITION_CONFIG.SPAM_KEYWORDS) {
-      if (name.includes(keyword)) {
-        spamIndicators += 1;
-      }
-    }
-    if (email.includes("noreply") || email.includes("no-reply")) {
-      spamIndicators += 1;
-    }
-    if (!candidate.name || !candidate.title || !candidate.organization?.name) {
-      spamIndicators += 1;
-    }
-
-    return spamIndicators;
-  }
-
-  private buildTitleRegex(jobTitles: string[]): RegExp | null {
-    if (!jobTitles.length) {
-      return null;
-    }
-    const escapedTitles = jobTitles.map((title) =>
-      title
-        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-        .replace(/\s+/g, "\\s+"),
-    );
-    const pattern = `(^|,\\s*|;\\s*|\\s+and\\s+|&\\s+)(${escapedTitles.join("|")})(?=\\s|$|,|;|\\s+and\\s|&)`;
-    return new RegExp(pattern, "i");
-  }
-
-  private scoreCandidate(
-    candidate: ApolloCandidate,
-    companyName: string,
-    likelyJobTitles: string[],
-    targetPersonName?: string,
-  ): number {
-    let score = 0;
-
-    if (targetPersonName) {
-      const candidateName = this.sanitize(candidate.name);
-      const targetName = this.sanitize(targetPersonName);
-      if (candidateName && candidateName === targetName) {
-        score += SCORING.EXACT_NAME_MATCH;
-      }
-    }
-
-    const candidateCompany = this.sanitize(candidate.organization?.name);
-    const targetCompany = this.sanitize(companyName);
-    if (candidateCompany && targetCompany) {
-      if (candidateCompany === targetCompany) {
-        score += SCORING.EXACT_COMPANY_MATCH;
-      } else if (candidateCompany.includes(targetCompany) || targetCompany.includes(candidateCompany)) {
-        score += SCORING.KEYWORD_COMPANY_MATCH;
-      }
-    }
-
-    const titleRegex = this.buildTitleRegex(likelyJobTitles);
-    if (titleRegex && candidate.title && titleRegex.test(candidate.title)) {
-      score += SCORING.JOB_TITLE_MATCH;
-    }
-
-    const emailStatus = candidate.email_status ?? candidate.emailStatus;
-    if (emailStatus === "verified") {
-      score += SCORING.VERIFIED_EMAIL;
-    } else if (emailStatus === "guessed" || emailStatus === "likely") {
-      score += SCORING.GUESSED_EMAIL;
-    }
-
-    const spamScore = this.calculateSpamScore(candidate);
-    if (spamScore > 0) {
-      score -= spamScore * SCORING.SPAM_PENALTY_PER_INDICATOR;
-    }
-
-    return score;
-  }
 
   private async tryEnrichCandidate(
     candidate: ApolloCandidate,

@@ -44,6 +44,7 @@ export async function runGenerationWorkflow({ parsed, userId, emit, signal }: Wo
   const shouldGenerateCoverLetter = !isColdOutreach;
   const shouldGenerateColdEmail = isColdOutreach;
   let researchBrief: ResearchBrief | null = null;
+  let changeSummary: string | null = null;
   const activeRequestId = getActiveRequestId();
   if (activeRequestId) {
     actionLogger.step("Workflow detected active request context", {
@@ -76,6 +77,28 @@ export async function runGenerationWorkflow({ parsed, userId, emit, signal }: Wo
   });
 
   assertNotAborted(signal);
+  await emit(`Context confirmed → ${parsed.companyName} • ${parsed.jobTitle}`);
+  if (parsed.companyWebsite) {
+    await emit(`Company website: ${parsed.companyWebsite}`);
+  }
+  if (parsed.jobSourceUrl && parsed.jobSourceUrl !== parsed.companyWebsite) {
+    await emit(`Job source: ${parsed.jobSourceUrl}`);
+  }
+  if (parsed.contactName || parsed.contactEmail) {
+    const nameSegment = parsed.contactName
+      ? `${parsed.contactName}${parsed.contactTitle ? ` (${parsed.contactTitle})` : ""}`
+      : null;
+    const parts = [nameSegment, parsed.contactEmail].filter((value): value is string => Boolean(value));
+    const contactLine = parts.length ? parts.join(" • ") : "Unavailable";
+    await emit(`Primary contact: ${contactLine}`);
+  } else {
+    await emit("Primary contact: not provided");
+  }
+  await emit(
+    parsedEmails.length
+      ? `Detected contact emails: ${parsedEmails.join(", ")}`
+      : "No validated contact emails detected — using fallback addresses.",
+  );
   await emit("Generating tailored CV...");
   try {
     assertNotAborted(signal);
@@ -111,6 +134,18 @@ export async function runGenerationWorkflow({ parsed, userId, emit, signal }: Wo
     researchBrief: researchBrief ?? undefined,
   });
   const cvPersistence = await persistCvArtifact(cvResponse, parsed, userId);
+  await emit("CV PDF compiled successfully.");
+
+  try {
+    assertNotAborted(signal);
+    await emit("Comparing tailored CV against your original resume...");
+    changeSummary = await aiService.generateCVChangeSummary(parsed.originalCV, cvPersistence.cv);
+    await emit("CV change summary ready.");
+  } catch (summaryError) {
+    const reason = summaryError instanceof Error ? summaryError.message : String(summaryError);
+    actionLogger.warn("Failed to generate CV change summary", { sessionId: parsed.sessionId, error: reason });
+    await emit(`Change summary unavailable: ${reason}`);
+  }
 
   assertNotAborted(signal);
   await maybeEnrichContactWithApollo(parsed, emit);
@@ -171,6 +206,7 @@ export async function runGenerationWorkflow({ parsed, userId, emit, signal }: Wo
       "Cover Letter (DOC)",
       "application/msword",
     );
+    await emit("Cover letter saved to storage.");
   } else {
     await emit("Skipping cover letter for cold outreach mode.");
   }
@@ -198,6 +234,7 @@ export async function runGenerationWorkflow({ parsed, userId, emit, signal }: Wo
     coldEmailArtifact.payload.subject = coldEmailStructure.subject;
     coldEmailArtifact.payload.body = coldEmailStructure.body;
     coldEmailArtifact.payload.toAddress = emailTarget;
+    await emit(`Cold email ready for ${emailTarget}.`);
   } else {
     await emit("Skipping cold email for standard mode.");
   }
@@ -216,6 +253,7 @@ export async function runGenerationWorkflow({ parsed, userId, emit, signal }: Wo
       storageKey: cvFile.key,
       mimeType: "application/pdf",
       pageCount: cvPersistence.result.pageCount,
+      changeSummary: changeSummary ?? undefined,
     },
     generatedFile: {
       key: cvFile.key,

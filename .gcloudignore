@@ -1,0 +1,9 @@
+# Files NOT uploaded to Cloud Build. Syntax matches .gitignore.
+# Start from the default list shipped with gcloud and tweak as needed.
+.gcloudignore
+.git
+.gitignore
+#!include:.gitignore
+
+# Allow the production env bundle into the build context so BuildKit secrets can mount it.
+!.env.build
