@@ -27,22 +27,14 @@ This is an open-source, AI-powered workbench that helps you land your dream job 
 
 Before you start, make sure you have the following installed on your computer:
 
-1.  **Node.js** (v18 or higher): [Download Here](https://nodejs.org/)
+1.  **Docker**: [Download Here](https://www.docker.com/products/docker-desktop/)
 2.  **Git**: [Download Here](https://git-scm.com/downloads)
-3.  **LaTeX Distribution** (Required for generating PDFs):
-    *   **Windows**: [MiKTeX](https://miktex.org/download) (Recommended) or TeX Live.
-    *   **Mac**: [MacTeX](https://www.tug.org/mactex/) or `brew install --cask mactex`.
-    *   **Linux**: `sudo apt-get install texlive-full`.
-4.  **Poppler** (Required for reading PDFs):
-    *   **Windows**: [Download Binary](https://github.com/oschwartz10612/poppler-windows/releases/) (Add `bin` folder to your System PATH).
-    *   **Mac**: `brew install poppler`.
-    *   **Linux**: `sudo apt-get install poppler-utils`.
 
 ---
 
 ## Step-by-Step Setup Guide
 
-Follow these steps to get the project running on your local machine.
+Follow these steps to get the project running on your local machine using Docker.
 
 ### 1. Clone the Repository
 Open your terminal (Command Prompt, PowerShell, or Terminal) and run:
@@ -52,14 +44,7 @@ git clone https://github.com/ebenezer-isaac/job-hunt.email.git
 cd job-hunt.email
 ```
 
-### 2. Install Dependencies
-Run the following command to install the necessary code libraries:
-
-```bash
-npm install
-```
-
-### 3. Configure Environment Variables
+### 2. Configure Environment Variables
 This project needs secrets (API keys) to work.
 
 1.  Copy the example environment file:
@@ -69,7 +54,7 @@ This project needs secrets (API keys) to work.
     ```
 2.  Open `.env.local` in a text editor (like VS Code or Notepad). You will need to fill in the blanks.
 
-### 4. Setup Firebase (Database & Auth)
+### 3. Setup Firebase (Database & Auth)
 This app uses Firebase for logging in and saving your data.
 
 1.  Go to the [Firebase Console](https://console.firebase.google.com/) and click **"Add project"**. Give it a name.
@@ -103,13 +88,13 @@ This app uses Firebase for logging in and saving your data.
         *   `NEXT_PUBLIC_FIREBASE_PROJECT_ID` -> `projectId`
         *   `FIREBASE_STORAGE_BUCKET` -> `storageBucket`
 
-### 5. Setup Gemini AI
+### 4. Setup Gemini AI
 1.  Go to [Google AI Studio](https://aistudio.google.com/).
 2.  Click **"Get API key"**.
 3.  Click **"Create API key in new project"**.
 4.  Copy the key and paste it into `.env.local` as `GEMINI_API_KEY`.
 
-### 6. Setup Apollo (Optional)
+### 5. Setup Apollo (Optional)
 *Required only if you want to find email addresses for cold outreach.*
 1.  Go to [Apollo.io](https://www.apollo.io/) and sign up.
 2.  Go to **Settings > Integrations > API**.
@@ -117,7 +102,7 @@ This app uses Firebase for logging in and saving your data.
 4.  Paste it into `.env.local` as `APOLLO_API_KEY`.
 *Note: CV customization and cover letters work fine without this.*
 
-### 7. Final Configuration
+### 6. Final Configuration
 You need to generate two secure random strings for security.
 Run this in your terminal (Node.js required):
 ```bash
@@ -126,18 +111,25 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 *   Copy the output and paste it into `.env.local` for `ACCESS_CONTROL_INTERNAL_TOKEN`.
 *   Run it again and paste it for `FIREBASE_AUTH_COOKIE_SIGNATURE_KEYS`.
 
-### 8. Admin Access (Recommended)
+### 7. Admin Access (Recommended)
 To avoid manually editing the database to allow yourself in, set your email as the admin.
 *   In `.env.local`, set `ADMIN_EMAIL=your.email@gmail.com`.
 *   This gives you instant access and a higher usage quota (1000 tokens).
 
-### 9. Run the Application
+### 8. Build and Run with Docker
+Build the Docker image:
 ```bash
-npm run dev
+docker build -t job-hunt-app .
 ```
-Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-### 10. Whitelist Others (Optional)
+Run the container:
+```bash
+docker run -p 8080:8080 --env-file .env.local job-hunt-app
+```
+
+Open [http://localhost:8080](http://localhost:8080) in your browser.
+
+### 9. Whitelist Others (Optional)
 The app is "invite-only" by default. If you didn't set `ADMIN_EMAIL`, or want to invite others:
 1.  Go to your [Firebase Console](https://console.firebase.google.com/) > **Firestore Database**.
 2.  Navigate to `app_config` > `security` > `accessControl` > `config`.
@@ -150,6 +142,7 @@ The app is "invite-only" by default. If you didn't set `ADMIN_EMAIL`, or want to
 1.  **Settings**: Go to the Settings tab. Upload your "Original CV" (LaTeX format) and fill in your "Extensive CV" (a text dump of everything you've ever done).
     *   **Need to create a LaTeX CV?** Use [Resumake.io](https://resumake.io) - a free online tool to build professional resumes in LaTeX format.
     *   **Want to edit your LaTeX CV?** Use [Overleaf](https://www.overleaf.com) for online LaTeX editing with real-time preview.
+    *   **Sample Template**: Check out this [Sample LaTeX CV on Overleaf](https://www.overleaf.com/read/prfgjwdxvxsb#d03be1) to see a compatible structure.
 2.  **New Session**: Go to the home page. Paste a Job Description URL or text.
 3.  **Generate**: Click "Generate". The AI will research the company, rewrite your CV, and draft a cover letter.
 4.  **Download**: Once done, you can download the PDF or copy the text.
@@ -170,7 +163,7 @@ This project is a **serverless, stateless Next.js application** designed for hig
 *   **Object Storage**: Firebase Storage - *Persists generated PDFs and text artifacts.*
 *   **Authentication**: Firebase Auth + `next-firebase-auth-edge` - *Edge-compatible JWT validation.*
 *   **AI Inference**: Google Gemini Pro (Reasoning) & Flash (Speed).
-*   **Document Engine**: LaTeX (`pdflatex`) + Poppler (`pdftotext`).
+*   **Document Engine**: LaTeX (`pdflatex`).
 
 ### System Design & Data Flow
 

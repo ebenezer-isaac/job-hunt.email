@@ -30,7 +30,6 @@ ENV NODE_ENV=production \
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
     texlive-full \
-    poppler-utils \
     ghostscript \
     fonts-noto \
     fonts-lmodern \

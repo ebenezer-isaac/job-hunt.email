@@ -62,13 +62,25 @@ export default function GuidePage() {
 function WebAppGuide() {
   return (
     <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <Section title="Why LaTeX CV?" icon="✨">
+        <p className="mb-4 text-zinc-600 dark:text-zinc-400">
+          We use LaTeX for CV generation because it offers superior advantages for job applications:
+        </p>
+        <ul className="ml-4 list-disc space-y-2 text-zinc-600 dark:text-zinc-400">
+          <li><span className="font-semibold text-zinc-900 dark:text-zinc-100">Beats the Bots (ATS):</span> Hiring robots often struggle to read standard PDFs. LaTeX creates clean, error-free files that ensure your skills are actually seen and ranked by the system.</li>
+          <li><span className="font-semibold text-zinc-900 dark:text-zinc-100">AI-Powered Precision:</span> Think of it as &quot;smart text.&quot; Our AI can surgically rewrite your CV for every job application without ever breaking your layout or formatting.</li>
+          <li><span className="font-semibold text-zinc-900 dark:text-zinc-100">Polished & Professional:</span> It automatically handles the tiny details—like spacing, fonts, and alignment—giving your CV a high-end look that Word docs just can&apos;t match.</li>
+          <li><span className="font-semibold text-zinc-900 dark:text-zinc-100">No-Headache Formatting:</span> Stop fighting with margins. With LaTeX, you change the text, and the document organizes itself. It&apos;s the stress-free way to keep your CV updated.</li>
+        </ul>
+      </Section>
+
       <Section title="1. Getting Started" icon="🚀">
         <p className="mb-6 text-zinc-600 dark:text-zinc-400">
           The web application is currently in closed beta. You&apos;ll need access approval to use it.
         </p>
         <Step number={1} title="Request Access">
           <p>
-            Since GCP Cloud Run and Apollo.io API are billed services, access to the hosted version is limited to control costs. To request access, please email <span className="font-medium text-zinc-900 dark:text-zinc-100">ebenezr.isaac@gmail.com</span>. However, you can spin up the same application locally for free using your own API keys.
+            Access to the hosted version is limited. To request access, please email <span className="font-medium text-zinc-900 dark:text-zinc-100">ebenezr.isaac@gmail.com</span>. Or run it locally for free.
           </p>
         </Step>
         <Step number={2} title="Sign In">
@@ -89,7 +101,7 @@ function WebAppGuide() {
         </p>
         <Step number={1} title="Navigate to Settings">
           <p>
-            Click the gear icon or &quot;Settings&quot; in the sidebar to access your profile settings.
+            Click your profile icon in the top right corner and select &quot;Settings&quot; from the dropdown menu.
           </p>
         </Step>
         <Step number={2} title="Upload Your Master CV">
@@ -97,9 +109,8 @@ function WebAppGuide() {
             Upload your &quot;Original CV&quot; in LaTeX format (.tex file). This is crucial because the AI uses the structure of LaTeX to precisely manipulate your CV content while maintaining professional formatting.
           </p>
           <ul className="ml-4 list-disc space-y-1 text-zinc-500 dark:text-zinc-400">
-            <li><span className="font-medium text-zinc-700 dark:text-zinc-300">Need help generating a LaTeX CV?</span> Use this <a href="#" className="text-blue-600 dark:text-blue-400 hover:underline">Gemini Chat Link</a> to convert your text CV into LaTeX.</li>
-            <li><span className="font-medium text-zinc-700 dark:text-zinc-300">Alignment Context:</span> Use the provided <a href="#" className="text-blue-600 dark:text-blue-400 hover:underline">LaTeX CV Generation Context.pdf</a> (in the repo) to guide the AI on the expected format.</li>
-            <li><span className="font-medium text-zinc-700 dark:text-zinc-300">Sample Template:</span> Check out this <a href="#" className="text-blue-600 dark:text-blue-400 hover:underline">Sample LaTeX CV on Overleaf</a> to see a compatible structure.</li>
+            <li><span className="font-medium text-zinc-700 dark:text-zinc-300">Need help generating a LaTeX CV?</span> We recommend <a href="https://resumake.io/" target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">Resumake.io</a> to easily build a professional LaTeX resume.</li>
+            <li><span className="font-medium text-zinc-700 dark:text-zinc-300">Sample Template:</span> Check out this <a href="https://www.overleaf.com/read/prfgjwdxvxsb#d03be1" className="text-blue-600 dark:text-blue-400 hover:underline">Sample LaTeX CV on Overleaf</a> to see a compatible structure.</li>
             <li><span className="font-medium text-zinc-700 dark:text-zinc-300">Editing:</span> You can edit and preview your LaTeX code at <a href="https://www.overleaf.com" target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">Overleaf</a>.</li>
           </ul>
         </Step>
@@ -200,18 +211,7 @@ function WebAppGuide() {
 function LocalGuide() {
   return (
     <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <Section title="Poppler" icon="📦">
-        <p className="mb-4 text-zinc-600 dark:text-zinc-400">
-          Required for reading PDFs
-        </p>
-        <ul className="ml-4 list-disc space-y-2 text-zinc-600 dark:text-zinc-400">
-          <li><span className="font-semibold text-zinc-900 dark:text-zinc-100">Windows:</span> <a href="#" className="text-blue-600 dark:text-blue-400 hover:underline">Download Binary</a> (Add bin folder to PATH)</li>
-          <li><span className="font-semibold text-zinc-900 dark:text-zinc-100">Mac:</span> <code className="rounded bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 font-mono text-sm">brew install poppler</code></li>
-          <li><span className="font-semibold text-zinc-900 dark:text-zinc-100">Linux:</span> <code className="rounded bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 font-mono text-sm">sudo apt-get install poppler-utils</code></li>
-        </ul>
-      </Section>
-
-      <Section title="Step-by-Step Installation" icon="🛠️">
+      <Section title="Step-by-Step Installation with Docker" icon="🐳">
         <Step number={1} title="Clone the Repository">
           <p className="mb-2">Open your terminal and run:</p>
           <CodeBlock>
@@ -219,15 +219,12 @@ function LocalGuide() {
             cd job-hunt.email
           </CodeBlock>
         </Step>
-        <Step number={2} title="Install Dependencies">
-          <CodeBlock>npm install</CodeBlock>
-        </Step>
-        <Step number={3} title="Configure Environment Variables">
+        <Step number={2} title="Configure Environment Variables">
           <p className="mb-2">Copy the example environment file:</p>
           <CodeBlock>cp .env.example .env.local</CodeBlock>
           <p className="mt-2">Then open <code className="rounded bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 font-mono text-sm">.env.local</code> in a text editor and fill in the required values.</p>
         </Step>
-        <Step number={4} title="Setup Firebase">
+        <Step number={3} title="Setup Firebase">
           <p className="mb-2">This application uses Firebase for authentication and data storage:</p>
           <ol className="ml-4 list-decimal space-y-1 text-zinc-600 dark:text-zinc-400">
             <li>Go to <a href="https://console.firebase.google.com/" target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">Firebase Console</a> and create a new project</li>
@@ -242,7 +239,7 @@ function LocalGuide() {
             </p>
           </div>
         </Step>
-        <Step number={5} title="Setup Google Gemini AI">
+        <Step number={4} title="Setup Google Gemini AI">
           <ol className="ml-4 list-decimal space-y-1 text-zinc-600 dark:text-zinc-400">
             <li>Visit <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">Google AI Studio</a></li>
             <li>Click &quot;Get API key&quot;</li>
@@ -250,21 +247,24 @@ function LocalGuide() {
             <li>Add it to <code className="rounded bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 font-mono text-sm">.env.local</code> as <code className="font-mono">GEMINI_API_KEY</code></li>
           </ol>
         </Step>
-        <Step number={6} title="Generate Security Keys">
+        <Step number={5} title="Generate Security Keys">
           <p className="mb-2">Run this command twice to generate two random keys:</p>
           <CodeBlock>
             node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&apos;base64&apos;))&quot;
           </CodeBlock>
           <p className="mt-2">Use the first output for <code className="rounded bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 font-mono text-sm">ACCESS_CONTROL_INTERNAL_TOKEN</code> and the second for <code className="rounded bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 font-mono text-sm">FIREBASE_AUTH_COOKIE_SIGNATURE_KEYS</code></p>
         </Step>
-        <Step number={7} title="Set Admin Email (Recommended)">
+        <Step number={6} title="Set Admin Email (Recommended)">
           <p className="mb-2">Add your email to skip the allowlist check:</p>
           <CodeBlock>ADMIN_EMAIL=your.email@gmail.com</CodeBlock>
           <p className="mt-2">This gives you instant access with a higher usage quota.</p>
         </Step>
-        <Step number={8} title="Run the Application">
-          <CodeBlock>npm run dev</CodeBlock>
-          <p className="mt-2">Open <a href="http://localhost:3000" target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">http://localhost:3000</a> in your browser.</p>
+        <Step number={7} title="Build and Run with Docker">
+          <p className="mb-2">Build the Docker image:</p>
+          <CodeBlock>docker build -t job-hunt-app .</CodeBlock>
+          <p className="mt-2 mb-2">Run the container:</p>
+          <CodeBlock>docker run -p 8080:8080 --env-file .env.local job-hunt-app</CodeBlock>
+          <p className="mt-2">Open <a href="http://localhost:8080" target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">http://localhost:8080</a> in your browser.</p>
         </Step>
       </Section>
 

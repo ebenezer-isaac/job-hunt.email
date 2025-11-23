@@ -13,7 +13,8 @@ import {
   faDownload,
   faChevronDown,
   faChevronUp,
-  faXmark
+  faXmark,
+  faList
 } from "@fortawesome/free-solid-svg-icons";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -158,8 +159,8 @@ export function ChatView() {
               onClick={handleLogsButton}
               className="inline-flex items-center gap-2 rounded-full border border-zinc-200 dark:border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-700 dark:text-zinc-300 transition hover:border-zinc-300 dark:hover:border-zinc-600 hover:text-zinc-900 dark:hover:text-zinc-100"
             >
-              <FontAwesomeIcon icon={faBrain} className="text-lg" />
-              Detailed logs
+              <FontAwesomeIcon icon={faList} className="text-lg" />
+              Logs
             </button>
           </div>
           <div ref={containerRef} className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
@@ -255,8 +256,8 @@ function GenerationLogsPanel({ open, generations, expandedId, onUserToggle, onCl
           isGenerating={isGenerating}
         />
       </aside>
-      <div className="fixed inset-0 z-30 bg-black/20 backdrop-blur-sm md:hidden" onClick={onClose} />
-      <div className="fixed inset-y-0 right-0 z-40 flex h-full w-full max-w-md flex-col border-l border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-5 py-6 shadow-2xl md:hidden">
+      <div className="fixed inset-0 z-50 bg-black/20 backdrop-blur-sm lg:hidden" onClick={onClose} />
+      <div className="fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-md flex-col border-l border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-5 py-6 shadow-2xl lg:hidden">
         <PanelContents
           generations={generations}
           expandedId={expandedId}
@@ -290,10 +291,10 @@ function PanelContents({ generations, expandedId, onUserToggle, onClose, isGener
         <button
           type="button"
           onClick={onClose}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 dark:border-zinc-700 text-lg text-zinc-500 dark:text-zinc-400 transition hover:border-zinc-300 dark:hover:border-zinc-600 hover:text-zinc-900 dark:hover:text-zinc-100"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 transition hover:border-zinc-300 dark:hover:border-zinc-600 hover:text-zinc-900 dark:hover:text-zinc-100"
           aria-label="Close diagnostics panel"
         >
-          ×
+          <FontAwesomeIcon icon={faXmark} />
         </button>
       </div>
       <div className="mt-4 flex-1 overflow-y-auto pr-1">

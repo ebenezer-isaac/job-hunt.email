@@ -1,11 +1,19 @@
 import { aiService } from "@/lib/ai/service";
-import { DocumentService, type CompileResult } from "@/lib/document-service";
+import type { DocumentService, CompileResult } from "@/lib/document-service";
 import { getStorageProvider } from "@/lib/storage/types";
 
 import type { ParsedForm } from "./form";
 
 const storageProvider = getStorageProvider();
-const documentService = new DocumentService(storageProvider);
+let _documentService: DocumentService | null = null;
+
+async function getDocumentService() {
+  if (!_documentService) {
+    const { DocumentService } = await import("@/lib/document-service");
+    _documentService = new DocumentService(storageProvider);
+  }
+  return _documentService;
+}
 
 export type StoredArtifact = {
   payload: {
@@ -69,7 +77,8 @@ export async function persistCvArtifact(
     maxRetries: 2,
   };
 
-  const initial = await documentService.compileLatexToPdf(baseParams);
+  const svc = await getDocumentService();
+  const initial = await svc.compileLatexToPdf(baseParams);
   if (initial.success && initial.file) {
     return { cv, result: initial };
   }
@@ -85,7 +94,7 @@ export async function persistCvArtifact(
     jobDescription: parsed.jobDescription,
   });
 
-  const retry = await documentService.compileLatexToPdf({ ...baseParams, texSource: fixedCv });
+  const retry = await svc.compileLatexToPdf({ ...baseParams, texSource: fixedCv });
   if (!retry.success || !retry.file) {
     throw new Error(retry.message ?? "Failed to produce a two-page CV PDF");
   }
@@ -102,7 +111,8 @@ export async function saveTextArtifact(
   label: string,
   contentType: string = "text/plain",
 ): Promise<StoredArtifact> {
-  const upload = await documentService.saveTextArtifact({
+  const svc = await getDocumentService();
+  const upload = await svc.saveTextArtifact({
     content,
     storage: {
       scope: "user",
