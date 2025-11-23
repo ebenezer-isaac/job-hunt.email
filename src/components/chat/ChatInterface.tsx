@@ -245,18 +245,18 @@ export function ChatInterface() {
   return (
     <div className="flex h-full flex-col gap-4">
       <ChatView />
-      <form onSubmit={handleSubmit} className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 pb-4">
+      <form onSubmit={handleSubmit} className="rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 dark:border-zinc-800 pb-4">
           <div>
             <p className="text-xs uppercase tracking-widest text-zinc-400">Mode</p>
-            <p className="text-base font-semibold text-zinc-900">
+            <p className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
               {mode === "standard" ? "Standard Application" : "Cold Outreach"}
             </p>
           </div>
           <ModeToggle mode={mode} onToggle={toggleMode} />
         </div>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <label className="text-sm font-semibold text-zinc-700">
+          <label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
             Company Name
             <input
               type="text"
@@ -265,12 +265,12 @@ export function ChatInterface() {
                 markDirty();
                 setCompanyName(event.target.value);
               }}
-              className="mt-1 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm text-zinc-900 focus:border-zinc-900 focus:bg-white focus:outline-none"
+              className="mt-1 w-full rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-4 py-2.5 text-sm text-zinc-900 dark:text-zinc-100 focus:border-zinc-900 dark:focus:border-zinc-500 focus:bg-white dark:focus:bg-zinc-900 focus:outline-none"
               placeholder="Google"
               required
             />
           </label>
-          <label className="text-sm font-semibold text-zinc-700">
+          <label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
             Role / Job Title
             <input
               type="text"
@@ -279,7 +279,7 @@ export function ChatInterface() {
                 markDirty();
                 setJobTitle(event.target.value);
               }}
-              className="mt-1 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm text-zinc-900 focus:border-zinc-900 focus:bg-white focus:outline-none"
+              className="mt-1 w-full rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-4 py-2.5 text-sm text-zinc-900 dark:text-zinc-100 focus:border-zinc-900 dark:focus:border-zinc-500 focus:bg-white dark:focus:bg-zinc-900 focus:outline-none"
               placeholder="Software Developer"
               required
             />
@@ -296,7 +296,7 @@ export function ChatInterface() {
                   markDirty();
                   setCompanyWebsite(event.target.value);
                 }}
-                className="mt-1 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm text-zinc-900 focus:border-zinc-900 focus:bg-white focus:outline-none"
+                className="mt-1 w-full rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-4 py-2.5 text-sm text-zinc-900 dark:text-zinc-100 focus:border-zinc-900 dark:focus:border-zinc-500 focus:bg-white dark:focus:bg-zinc-900 focus:outline-none"
                 placeholder="https://google.com/careers"
                 required={isColdOutreach}
               />
@@ -310,7 +310,7 @@ export function ChatInterface() {
                   markDirty();
                   setContactName(event.target.value);
                 }}
-                className="mt-1 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm text-zinc-900 focus:border-zinc-900 focus:bg-white focus:outline-none"
+                className="mt-1 w-full rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-4 py-2.5 text-sm text-zinc-900 dark:text-zinc-100 focus:border-zinc-900 dark:focus:border-zinc-500 focus:bg-white dark:focus:bg-zinc-900 focus:outline-none"
                 placeholder="Sundar Pichai"
               />
             </label>
@@ -323,7 +323,7 @@ export function ChatInterface() {
                   markDirty();
                   setContactTitle(event.target.value);
                 }}
-                className="mt-1 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm text-zinc-900 focus:border-zinc-900 focus:bg-white focus:outline-none"
+                className="mt-1 w-full rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-4 py-2.5 text-sm text-zinc-900 dark:text-zinc-100 focus:border-zinc-900 dark:focus:border-zinc-500 focus:bg-white dark:focus:bg-zinc-900 focus:outline-none"
                 placeholder="CEO"
               />
             </label>
@@ -336,7 +336,7 @@ export function ChatInterface() {
                   markDirty();
                   setContactEmail(event.target.value);
                 }}
-                className="mt-1 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm text-zinc-900 focus:border-zinc-900 focus:bg-white focus:outline-none"
+                className="mt-1 w-full rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-4 py-2.5 text-sm text-zinc-900 dark:text-zinc-100 focus:border-zinc-900 dark:focus:border-zinc-500 focus:bg-white dark:focus:bg-zinc-900 focus:outline-none"
                 placeholder="sundar@google.com"
               />
             </label>
@@ -353,10 +353,10 @@ export function ChatInterface() {
             placeholder={placeholder}
             rows={6}
             required={jobDescriptionRequired}
-            className="mt-2 w-full resize-none rounded-3xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-900 focus:border-zinc-900 focus:bg-white focus:outline-none"
+            className="mt-2 w-full resize-none rounded-3xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-4 py-3 text-sm text-zinc-900 dark:text-zinc-100 focus:border-zinc-900 dark:focus:border-zinc-500 focus:bg-white dark:focus:bg-zinc-900 focus:outline-none"
           />
         </label>
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-zinc-500">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-zinc-500 dark:text-zinc-400">
           <p>
             Tip: Paste a URL in cold mode to trigger reconnaissance and contact targeting logic.
           </p>
@@ -366,7 +366,7 @@ export function ChatInterface() {
                 type="button"
                 onClick={handleRetry}
                 disabled={isGenerating || isRetrying}
-                className="rounded-full border border-orange-200 bg-orange-50 px-4 py-2 text-sm font-semibold text-orange-700 transition hover:border-orange-300 hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-70"
+                className="rounded-full border border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-900/20 px-4 py-2 text-sm font-semibold text-orange-700 dark:text-orange-300 transition hover:border-orange-300 dark:hover:border-orange-700 hover:bg-orange-100 dark:hover:bg-orange-900/30 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {isRetrying ? "Retrying…" : "Retry last request"}
               </button>
@@ -374,7 +374,7 @@ export function ChatInterface() {
             <button
               type="submit"
               disabled={isGenerating || isRetrying}
-              className="rounded-full bg-zinc-950 px-6 py-2 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+              className="rounded-full bg-zinc-950 dark:bg-zinc-100 px-6 py-2 text-sm font-semibold text-white dark:text-zinc-900 transition hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:cursor-not-allowed disabled:bg-zinc-400 dark:disabled:bg-zinc-600"
             >
               {isGenerating ? "Generating…" : hasGeneratedInSession ? "Regenerate" : "Generate Documents"}
             </button>

@@ -36,18 +36,18 @@ export function ChatApp({ initialState, userId, userProfile, quota }: ChatAppPro
     <SessionStoreProvider initialState={storeInitialState}>
       <SessionSubscriptionBoundary userId={userId}>
         <QuotaProvider userId={userId} initialQuota={quota}>
-          <div className="flex min-h-screen bg-zinc-100">
+          <div className="flex min-h-screen bg-zinc-100 dark:bg-zinc-950">
             <SessionSidebar
               collapsed={sidebarCollapsed}
               onToggleCollapsed={() => setSidebarCollapsed((prev) => !prev)}
               onSessionSelected={() => setPanel('chat')}
             />
             <div className="flex flex-1 flex-col">
-              <header className="flex flex-wrap items-center justify-between border-b border-zinc-200 bg-white px-8 py-5">
+              <header className="flex flex-wrap items-center justify-between border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-8 py-5">
                 <div>
                   <p className="text-xs uppercase tracking-widest text-zinc-400">job-hunt.email</p>
-                  <h1 className="text-2xl font-semibold text-zinc-900">AI Job Application Assisstant</h1>
-                  <p className="text-sm text-zinc-500">
+                  <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">AI Job Application Assisstant</h1>
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">
                     Tailored CVs, cover letters, and outreach sequences in a single console.
                   </p>
                 </div>
@@ -58,7 +58,7 @@ export function ChatApp({ initialState, userId, userProfile, quota }: ChatAppPro
                   />
                 </div>
               </header>
-              <main id="main-content" className="flex-1 overflow-y-auto bg-zinc-50 p-6">
+              <main id="main-content" className="flex-1 overflow-y-auto bg-zinc-50 dark:bg-zinc-900 p-6">
                 {panel === 'chat' ? <ChatInterface /> : <SettingsPanel onClose={() => setPanel('chat')} />}
               </main>
             </div>
@@ -135,11 +135,11 @@ function UserMenu({ profile, onOpenSettings }: UserMenuProps) {
       <button
         type="button"
         onClick={toggleMenu}
-        className="flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-left transition hover:border-zinc-300"
+        className="flex items-center gap-2 rounded-full border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-1.5 text-left transition hover:border-zinc-300 dark:hover:border-zinc-600"
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <div className="h-9 w-9 overflow-hidden rounded-full bg-zinc-100">
+        <div className="h-9 w-9 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-700">
           {avatarUrl && !avatarFailed ? (
             <Image
               src={avatarUrl}
@@ -151,41 +151,41 @@ function UserMenu({ profile, onOpenSettings }: UserMenuProps) {
               onError={() => setAvatarFailed(true)}
             />
           ) : (
-            <span className="flex h-full w-full items-center justify-center text-sm font-semibold text-zinc-600">
+            <span className="flex h-full w-full items-center justify-center text-sm font-semibold text-zinc-600 dark:text-zinc-300">
               {initials}
             </span>
           )}
         </div>
         <div className="hidden text-left sm:block">
-          <p className="text-xs font-semibold text-zinc-900">{profile.displayName ?? 'Workspace'}</p>
-          <p className="text-[11px] text-zinc-500">{profile.email ?? ''}</p>
+          <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">{profile.displayName ?? 'Workspace'}</p>
+          <p className="text-[11px] text-zinc-500 dark:text-zinc-400">{profile.email ?? ''}</p>
         </div>
       </button>
       {open ? (
-        <div className="absolute right-0 z-20 mt-3 w-56 rounded-2xl border border-zinc-200 bg-white p-2 shadow-xl">
-          <div className="px-3 py-2 text-xs text-zinc-500">
+        <div className="absolute right-0 z-20 mt-3 w-56 rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 p-2 shadow-xl">
+          <div className="px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400">
             Signed in as
-            <p className="text-sm font-semibold text-zinc-900">{profile.displayName ?? profile.email ?? 'Workspace'}</p>
+            <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{profile.displayName ?? profile.email ?? 'Workspace'}</p>
           </div>
           {quota ? (
-            <div className="mb-2 rounded-xl bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
-              <p className="font-semibold text-zinc-900">Usage</p>
+            <div className="mb-2 rounded-xl bg-zinc-50 dark:bg-zinc-900 px-3 py-2 text-xs text-zinc-600 dark:text-zinc-400">
+              <p className="font-semibold text-zinc-900 dark:text-zinc-100">Usage</p>
               <p>Remaining: {quota.remaining} / {quota.totalAllocated}</p>
               <p>On hold: {quota.onHold}</p>
-              <p className="mt-1 text-[11px] text-zinc-500">Need more? Email {contactEmail}</p>
+              <p className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">Need more? Email {contactEmail}</p>
             </div>
           ) : null}
           <button
             type="button"
             onClick={openSettings}
-            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50"
+            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-zinc-700 dark:text-zinc-300 transition hover:bg-zinc-50 dark:hover:bg-zinc-700"
           >
             Settings
           </button>
           <button
             type="button"
             onClick={handleLogout}
-            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-red-600 dark:text-red-400 transition hover:bg-red-50 dark:hover:bg-red-900/20"
           >
             Logout
           </button>

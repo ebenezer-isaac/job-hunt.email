@@ -131,16 +131,16 @@ export function ChatView() {
 
   return (
     <div className="flex flex-1 flex-col gap-6 lg:flex-row">
-      <section className="flex flex-1 flex-col overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 px-6 py-4">
+      <section className="flex flex-1 flex-col overflow-hidden rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 dark:border-zinc-800 px-6 py-4">
             <div>
-              <p className="text-xs uppercase tracking-wide text-zinc-500">Conversation</p>
-              <p className="text-base font-semibold text-zinc-900">Artifacts &amp; context</p>
+              <p className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Conversation</p>
+              <p className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Artifacts &amp; context</p>
             </div>
             <button
               type="button"
               onClick={handleLogsButton}
-              className="inline-flex items-center gap-2 rounded-full border border-zinc-200 px-4 py-2 text-sm font-semibold text-zinc-700 transition hover:border-zinc-300 hover:text-zinc-900"
+              className="inline-flex items-center gap-2 rounded-full border border-zinc-200 dark:border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-700 dark:text-zinc-300 transition hover:border-zinc-300 dark:hover:border-zinc-600 hover:text-zinc-900 dark:hover:text-zinc-100"
             >
               <span className="text-lg">🧠</span>
               Detailed logs
@@ -149,8 +149,8 @@ export function ChatView() {
           <div ref={containerRef} className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
             {isGenerating ? (
               <div className="flex h-full flex-col items-center justify-center gap-4">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-zinc-200 border-t-zinc-900" />
-                <p className="text-sm font-semibold text-zinc-500 animate-pulse">Generating documents...</p>
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-zinc-200 dark:border-zinc-700 border-t-zinc-900 dark:border-t-zinc-100" />
+                <p className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 animate-pulse">Generating documents...</p>
               </div>
             ) : showWelcome ? (
               <WelcomePanel />
@@ -578,16 +578,16 @@ function logLevelDotClass(level?: "info" | "success" | "error"): string {
 
 function WelcomePanel() {
   return (
-    <div className="mb-8 rounded-3xl border border-dashed border-zinc-200 bg-gradient-to-b from-white to-zinc-50 px-6 py-10 text-center">
-      <p className="text-sm uppercase tracking-wide text-zinc-500">job-hunt.email</p>
-      <h2 className="mt-3 text-3xl font-semibold text-zinc-900">AI Job Application Assisstant</h2>
-      <p className="mt-2 text-base text-zinc-500">Paste a URL, drop in a job description and get a customized cv with the click of a button</p>
-      <div className="mt-8 grid gap-4 md:grid-cols-3">
+    <div className="mb-8 rounded-3xl border border-dashed border-zinc-200 dark:border-zinc-700 bg-gradient-to-b from-white to-zinc-50 dark:from-zinc-900 dark:to-zinc-950 px-6 py-10 text-center">
+      <p className="text-sm uppercase tracking-wide text-zinc-500 dark:text-zinc-400">job-hunt.email</p>
+      <h2 className="mt-3 text-3xl font-semibold text-zinc-900 dark:text-zinc-100">AI Job Application Assisstant</h2>
+      <p className="mt-2 text-base text-zinc-500 dark:text-zinc-400">Paste a URL, drop in a job description and get a customized cv with the click of a button</p>
+      <div className="mt-8 grid gap-4 sm:grid-cols-2 md:grid-cols-3">
         {["Paste a URL", "Paste Job Description", "Refine Content"].map((title, index) => (
-          <div key={title} className="rounded-2xl border border-zinc-100 bg-white px-4 py-6 text-left shadow-sm">
+          <div key={title} className="rounded-2xl border border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-4 py-6 text-left shadow-sm">
             <div className="text-2xl">{["🔗", "📝", "💬"][index]}</div>
-            <p className="mt-3 text-base font-semibold text-zinc-900">{title}</p>
-            <p className="mt-1 text-sm text-zinc-500">
+            <p className="mt-3 text-base font-semibold text-zinc-900 dark:text-zinc-100">{title}</p>
+            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
               {index === 0
                 ? "Drop a job posting link to auto-extract details."
                 : index === 1
