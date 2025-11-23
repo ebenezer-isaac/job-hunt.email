@@ -112,13 +112,13 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           <p className="mt-2 text-sm text-zinc-500">
             Updates auto-save every few keystrokes. Upload .tex files for CVs and plain text for supporting content.
           </p>
-          <p className="mt-2 text-xs text-zinc-600">
+          <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">
             💡 <strong>Need a LaTeX CV?</strong> Use{" "}
-            <a href="https://resumake.io" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline hover:text-blue-800">
+            <a href="https://resumake.io" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800 dark:hover:text-blue-300">
               Resumake.io
             </a>{" "}
             to build one online. Edit with{" "}
-            <a href="https://www.overleaf.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline hover:text-blue-800">
+            <a href="https://www.overleaf.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800 dark:hover:text-blue-300">
               Overleaf
             </a>.
           </p>
