@@ -64,10 +64,10 @@ export default function RootLayout({
     hasChildren: Boolean(children),
   });
   return (
-    <html lang="en">
+    <html lang="en" className="h-full">
       <body
         suppressHydrationWarning
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased h-full`}
       >
         <ToasterProvider />
         {children}

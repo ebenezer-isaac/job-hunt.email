@@ -3,6 +3,7 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  color-scheme: light dark;
 }
 
 @theme inline {
@@ -23,4 +24,9 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+html,
+body {
+  height: 100%;
 }

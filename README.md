@@ -148,6 +148,8 @@ The app is "invite-only" by default. If you didn't set `ADMIN_EMAIL`, or want to
 ## Usage Guide
 
 1.  **Settings**: Go to the Settings tab. Upload your "Original CV" (LaTeX format) and fill in your "Extensive CV" (a text dump of everything you've ever done).
+    *   **Need to create a LaTeX CV?** Use [Resumake.io](https://resumake.io) - a free online tool to build professional resumes in LaTeX format.
+    *   **Want to edit your LaTeX CV?** Use [Overleaf](https://www.overleaf.com) for online LaTeX editing with real-time preview.
 2.  **New Session**: Go to the home page. Paste a Job Description URL or text.
 3.  **Generate**: Click "Generate". The AI will research the company, rewrite your CV, and draft a cover letter.
 4.  **Download**: Once done, you can download the PDF or copy the text.
