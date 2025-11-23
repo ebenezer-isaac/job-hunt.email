@@ -15,7 +15,7 @@ firebase-debug.log
 .tmp-env/
 
 # Offline corpora / personal data
-source_files/
+# source_files/
 
 # Git metadata
 .git

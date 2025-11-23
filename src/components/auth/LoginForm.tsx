@@ -1,93 +1,19 @@
 'use client';
 
-import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
-import { firebaseAuth } from "@/lib/firebase-client";
-import { LOGIN_REDIRECT_PARAM_KEY, LOGIN_STATUS_PARAM_KEY } from "@/lib/auth-shared";
+import { useGoogleLogin } from "@/hooks/useGoogleLogin";
 import { clientEnv } from "@/lib/env-client";
 
-const googleProvider = new GoogleAuthProvider();
-googleProvider.setCustomParameters({ prompt: "select_account" });
 const allowlistContactEmail = clientEnv.contactEmail;
 const repoUrl = clientEnv.repoUrl;
 
 export function LoginForm() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const redirectParam = searchParams.get(LOGIN_REDIRECT_PARAM_KEY);
-  const loginStatus = searchParams.get(LOGIN_STATUS_PARAM_KEY);
-  const redirectPath = redirectParam && redirectParam.startsWith("/") ? redirectParam : "/";
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [statusStep, setStatusStep] = useState<'authenticating' | 'establishing' | 'redirecting' | null>(null);
-  const isAllowlistDenied = loginStatus === "allowlist-denied";
-
-  useEffect(() => {
-    if (!loginStatus) {
-      return;
-    }
-    const loginStatusMessages: Record<string, string> = {
-      "invalid-token":
-        "Your authentication token expired. Please sign in again to refresh your session.",
-    };
-    const message = loginStatusMessages[loginStatus];
-    if (message) {
-      setStatusStep(null);
-      setIsSubmitting(false);
-      setError(message);
-    }
-  }, [loginStatus]);
-
-  useEffect(() => {
-    if (!isAllowlistDenied) {
-      return;
-    }
-    setStatusStep(null);
-    setIsSubmitting(false);
-    setError(null);
-  }, [isAllowlistDenied, loginStatus]);
-
-  const handleGoogleSignIn = async () => {
-    if (isAllowlistDenied) {
-      setError(null);
-      setStatusStep(null);
-      return;
-    }
-    setIsSubmitting(true);
-    setError(null);
-    setStatusStep('authenticating');
-
-    try {
-      const credential = await signInWithPopup(firebaseAuth, googleProvider);
-      setStatusStep('establishing');
-      const idToken = await credential.user.getIdToken();
-
-      const response = await fetch("/api/login", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${idToken}`,
-        },
-        credentials: "include",
-      });
-
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        throw new Error(payload?.message ?? "Unable to establish session");
-      }
-      const responseBody = await response.json().catch(() => null);
-
-      setStatusStep('redirecting');
-      router.push(redirectPath);
-      router.refresh();
-      return;
-    } catch (authError) {
-      const message = authError instanceof Error ? authError.message : "Unexpected error";
-      setError(message);
-      setStatusStep(null);
-      setIsSubmitting(false);
-    }
-  };
+  const {
+    isSubmitting,
+    error,
+    statusStep,
+    isAllowlistDenied,
+    handleGoogleSignIn
+  } = useGoogleLogin();
 
   const effectiveStatus = isAllowlistDenied ? "denied" : statusStep;
   const statusCopy = effectiveStatus
@@ -118,15 +44,15 @@ export function LoginForm() {
   return (
     <div className="flex w-full flex-col items-center gap-4 text-center">
       {error ? (
-        <p className="w-full rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+        <p className="w-full rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-3 py-2 text-sm text-red-700 dark:text-red-300">{error}</p>
       ) : null}
 
       {statusCopy ? (
         <div
           className={`w-full rounded-2xl px-4 py-3 text-left shadow-sm ${
             statusCopy.variant === "blocked"
-              ? "border border-red-200 bg-red-50/90"
-              : "border border-zinc-200 bg-white/80"
+              ? "border border-red-200 dark:border-red-800 bg-red-50/90 dark:bg-red-900/20"
+              : "border border-zinc-200 dark:border-zinc-700 bg-white/80 dark:bg-zinc-800/80"
           }`}
           aria-live="polite"
         >
@@ -135,23 +61,23 @@ export function LoginForm() {
               {statusCopy.variant === "blocked" ? <DeniedIcon /> : <LoadingSpinner />}
             </span>
             <div>
-              <p className="text-sm font-semibold text-zinc-900">{statusCopy.title}</p>
-              <p className="text-xs text-zinc-500">{statusCopy.subtitle}</p>
+              <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{statusCopy.title}</p>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">{statusCopy.subtitle}</p>
             </div>
           </div>
         </div>
       ) : null}
 
-      <div className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-left text-xs text-zinc-600">
-        <p className="text-sm font-semibold text-zinc-900">Closed Beta Testing Notice</p>
+      <div className="w-full rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-4 py-3 text-left text-xs text-zinc-600 dark:text-zinc-400">
+        <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Closed Beta Testing Notice</p>
         <p className="mt-1">
-          Access is limited to approved applicants. Email <a href={`mailto:${allowlistContactEmail}`} className="font-medium text-zinc-900 underline">{allowlistContactEmail}</a> to request access.
+          Access is limited to approved applicants. Email <a href={`mailto:${allowlistContactEmail}`} className="font-medium text-zinc-900 dark:text-zinc-100 underline">{allowlistContactEmail}</a> to request access.
         </p>
         <p className="mt-2">
           Disclaimer: This application is in closed beta testing and may contain bugs or incomplete features. Use at your own risk.
         </p>
         <p className="mt-2">
-          All data logs and usage analytics are retained to improve performance and business logic. APIs incur compute and billing costs. Review the open-source code at <a href={repoUrl} target="_blank" rel="noreferrer" className="font-medium text-zinc-900 underline">GitHub</a> to self-host or raise issues.
+          All data logs and usage analytics are retained to improve performance and business logic. APIs incur compute and billing costs. Review the open-source code at <a href={repoUrl} target="_blank" rel="noreferrer" className="font-medium text-zinc-900 dark:text-zinc-100 underline">GitHub</a> to self-host or raise issues.
         </p>
       </div>
 
@@ -159,14 +85,14 @@ export function LoginForm() {
         type="button"
         onClick={handleGoogleSignIn}
         disabled={isSubmitting || isAllowlistDenied}
-        className="flex h-12 w-full items-center justify-center gap-3 rounded-full border border-zinc-300 bg-white px-6 text-base font-medium text-zinc-900 shadow-sm transition hover:border-zinc-400 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-70"
+        className="flex h-12 w-full items-center justify-center gap-3 rounded-full border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-6 text-base font-medium text-zinc-900 dark:text-zinc-100 shadow-sm transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-70"
       >
         {isAllowlistDenied ? (
-          <span className="text-sm font-semibold text-zinc-900">Request access to continue</span>
+          <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Request access to continue</span>
         ) : isSubmitting ? (
           <>
             <LoadingSpinner />
-            <span className="text-sm font-semibold text-zinc-900">Please wait...</span>
+            <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Please wait...</span>
           </>
         ) : (
           <>
@@ -186,7 +112,7 @@ export function LoginForm() {
         )}
       </button>
       {isAllowlistDenied ? (
-        <p className="text-xs text-zinc-500">Already added to the allowlist? <a href="./" className="font-medium text-zinc-900 underline">Click Here.</a></p>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400">Already added to the allowlist? <a href="./" className="font-medium text-zinc-900 dark:text-zinc-100 underline">Click Here.</a></p>
       ) : null}
     </div>
   );
@@ -194,7 +120,7 @@ export function LoginForm() {
 
 function LoadingSpinner() {
   return (
-    <span className="inline-flex h-5 w-5 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900" aria-hidden />
+    <span className="inline-flex h-5 w-5 animate-spin rounded-full border-2 border-zinc-300 dark:border-zinc-600 border-t-zinc-900 dark:border-t-zinc-100" aria-hidden />
   );
 }
 

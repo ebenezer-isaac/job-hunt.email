@@ -1,5 +1,22 @@
 'use client';
 
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faBrain,
+  faLink,
+  faFileLines,
+  faComments,
+  faFilePdf,
+  faEnvelope,
+  faPaperPlane,
+  faCopy,
+  faDownload,
+  faChevronDown,
+  faChevronUp,
+  faXmark,
+  faList
+} from "@fortawesome/free-solid-svg-icons";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { useSessionStore, type ChatMessage } from "@/store/session-store";
@@ -131,26 +148,26 @@ export function ChatView() {
 
   return (
     <div className="flex flex-1 flex-col gap-6 lg:flex-row">
-      <section className="flex flex-1 flex-col overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 px-6 py-4">
+      <section className="flex flex-1 flex-col overflow-hidden rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 dark:border-zinc-800 px-6 py-4">
             <div>
-              <p className="text-xs uppercase tracking-wide text-zinc-500">Conversation</p>
-              <p className="text-base font-semibold text-zinc-900">Artifacts &amp; context</p>
+              <p className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Conversation</p>
+              <p className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Artifacts &amp; context</p>
             </div>
             <button
               type="button"
               onClick={handleLogsButton}
-              className="inline-flex items-center gap-2 rounded-full border border-zinc-200 px-4 py-2 text-sm font-semibold text-zinc-700 transition hover:border-zinc-300 hover:text-zinc-900"
+              className="inline-flex items-center gap-2 rounded-full border border-zinc-200 dark:border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-700 dark:text-zinc-300 transition hover:border-zinc-300 dark:hover:border-zinc-600 hover:text-zinc-900 dark:hover:text-zinc-100"
             >
-              <span className="text-lg">🧠</span>
-              Detailed logs
+              <FontAwesomeIcon icon={faList} className="text-lg" />
+              Logs
             </button>
           </div>
           <div ref={containerRef} className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
             {isGenerating ? (
               <div className="flex h-full flex-col items-center justify-center gap-4">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-zinc-200 border-t-zinc-900" />
-                <p className="text-sm font-semibold text-zinc-500 animate-pulse">Generating documents...</p>
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-zinc-200 dark:border-zinc-700 border-t-zinc-900 dark:border-t-zinc-100" />
+                <p className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 animate-pulse">Generating documents...</p>
               </div>
             ) : showWelcome ? (
               <WelcomePanel />
@@ -180,10 +197,30 @@ type GenerationStatusBadgeProps = {
 
 function GenerationStatusBadge({ status }: GenerationStatusBadgeProps) {
   const meta: Record<GenerationStatus, { label: string; bg: string; text: string; dot: string }> = {
-    pending: { label: "Pending", bg: "bg-zinc-100", text: "text-zinc-700", dot: "bg-zinc-500" },
-    "in-progress": { label: "Thinking", bg: "bg-amber-100", text: "text-amber-700", dot: "bg-amber-500" },
-    completed: { label: "Completed", bg: "bg-emerald-100", text: "text-emerald-700", dot: "bg-emerald-500" },
-    failed: { label: "Failed", bg: "bg-red-100", text: "text-red-700", dot: "bg-red-500" },
+    pending: { 
+      label: "Pending", 
+      bg: "bg-zinc-100 dark:bg-zinc-800", 
+      text: "text-zinc-700 dark:text-zinc-300", 
+      dot: "bg-zinc-500 dark:bg-zinc-400" 
+    },
+    "in-progress": { 
+      label: "Thinking", 
+      bg: "bg-amber-100 dark:bg-amber-900/30", 
+      text: "text-amber-700 dark:text-amber-300", 
+      dot: "bg-amber-500 dark:bg-amber-400" 
+    },
+    completed: { 
+      label: "Completed", 
+      bg: "bg-emerald-100 dark:bg-emerald-900/30", 
+      text: "text-emerald-700 dark:text-emerald-300", 
+      dot: "bg-emerald-500 dark:bg-emerald-400" 
+    },
+    failed: { 
+      label: "Failed", 
+      bg: "bg-red-100 dark:bg-red-900/30", 
+      text: "text-red-700 dark:text-red-300", 
+      dot: "bg-red-500 dark:bg-red-400" 
+    },
   };
   const config = meta[status];
   return (
@@ -210,7 +247,7 @@ function GenerationLogsPanel({ open, generations, expandedId, onUserToggle, onCl
 
   return (
     <>
-      <aside className="relative hidden h-full w-[24rem] flex-shrink-0 overflow-hidden rounded-3xl border border-zinc-200 bg-white px-5 py-6 shadow-sm lg:flex lg:flex-col">
+      <aside className="relative hidden h-full w-[24rem] flex-shrink-0 overflow-hidden rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-5 py-6 shadow-sm lg:flex lg:flex-col">
         <PanelContents
           generations={generations}
           expandedId={expandedId}
@@ -219,8 +256,8 @@ function GenerationLogsPanel({ open, generations, expandedId, onUserToggle, onCl
           isGenerating={isGenerating}
         />
       </aside>
-      <div className="fixed inset-0 z-30 bg-black/20 backdrop-blur-sm md:hidden" onClick={onClose} />
-      <div className="fixed inset-y-0 right-0 z-40 flex h-full w-full max-w-md flex-col border-l border-zinc-200 bg-white px-5 py-6 shadow-2xl md:hidden">
+      <div className="fixed inset-0 z-50 bg-black/20 backdrop-blur-sm lg:hidden" onClick={onClose} />
+      <div className="fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-md flex-col border-l border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-5 py-6 shadow-2xl lg:hidden">
         <PanelContents
           generations={generations}
           expandedId={expandedId}
@@ -248,21 +285,21 @@ function PanelContents({ generations, expandedId, onUserToggle, onClose, isGener
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs uppercase tracking-wide text-zinc-500">Diagnostics</p>
-          <p className="text-base font-semibold text-zinc-900">Generation Logs</p>
+          <p className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Diagnostics</p>
+          <p className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Generation Logs</p>
         </div>
         <button
           type="button"
           onClick={onClose}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 text-lg text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-900"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 transition hover:border-zinc-300 dark:hover:border-zinc-600 hover:text-zinc-900 dark:hover:text-zinc-100"
           aria-label="Close diagnostics panel"
         >
-          ×
+          <FontAwesomeIcon icon={faXmark} />
         </button>
       </div>
       <div className="mt-4 flex-1 overflow-y-auto pr-1">
         {ordered.length === 0 ? (
-          <p className="text-sm text-zinc-500">No generations yet. Run a request to inspect logs.</p>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">No generations yet. Run a request to inspect logs.</p>
         ) : (
           <ul className="space-y-3">
             {ordered.map((generation: GenerationRun) => {
@@ -301,16 +338,16 @@ function GenerationListItem({ generation, isExpanded, onToggle, isLatest, isGene
   const requestPreview = generation.request?.content ?? "No request captured for this generation.";
 
   return (
-    <li className="rounded-2xl border border-zinc-100 bg-zinc-50 px-4 py-4">
+    <li className="rounded-2xl border border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 px-4 py-4">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <p className="text-sm font-semibold text-zinc-900">Generation {generation.index}</p>
-          <p className="text-xs text-zinc-500">{formatFullTimestamp(generation.startedAt)}</p>
+          <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Generation {generation.index}</p>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">{formatFullTimestamp(generation.startedAt)}</p>
         </div>
         <GenerationStatusBadge status={status} />
       </div>
       {summaryContent ? (
-        <div className="prose prose-sm mt-3 text-sm text-zinc-800">
+        <div className="prose prose-sm mt-3 text-sm text-zinc-800 dark:text-zinc-200">
           <ReactMarkdown>{summaryContent}</ReactMarkdown>
         </div>
       ) : null}
@@ -318,7 +355,7 @@ function GenerationListItem({ generation, isExpanded, onToggle, isLatest, isGene
         type="button"
         onClick={onToggle}
         aria-expanded={isExpanded}
-        className="mt-3 flex w-full items-center justify-between rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold text-zinc-700 transition hover:border-zinc-300 hover:text-zinc-900"
+        className="mt-3 flex w-full items-center justify-between rounded-full border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-4 py-2 text-sm font-semibold text-zinc-700 dark:text-zinc-300 transition hover:border-zinc-300 dark:hover:border-zinc-600 hover:text-zinc-900 dark:hover:text-zinc-100"
       >
         <span className="inline-flex items-center gap-2">
           Detailed logs
@@ -332,7 +369,7 @@ function GenerationListItem({ generation, isExpanded, onToggle, isLatest, isGene
             <path d="M5 7l5 6 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </span>
-        <span className="text-xs font-normal text-zinc-500">
+        <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">
           {status === "in-progress"
             ? "Thinking…"
             : durationLabel
@@ -341,11 +378,11 @@ function GenerationListItem({ generation, isExpanded, onToggle, isLatest, isGene
         </span>
       </button>
       {isExpanded ? (
-        <div className="mt-3 rounded-2xl border border-zinc-100 bg-white px-3 py-3">
+        <div className="mt-3 rounded-2xl border border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 py-3">
           {generation.logs.length === 0 ? (
-            <p className="text-xs text-zinc-500">No detailed logs captured for this run.</p>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">No detailed logs captured for this run.</p>
           ) : (
-            <ul className="space-y-2 text-sm text-zinc-800">
+            <ul className="space-y-2 text-sm text-zinc-800 dark:text-zinc-200">
               {generation.logs.map((log: GenerationLogEntry) => (
                 <li key={log.id} className="flex gap-3" title={formatLogTimestamp(log.timestamp)}>
                   <span className={`mt-1 h-2 w-2 flex-shrink-0 rounded-full ${logLevelDotClass(log.level)}`} aria-hidden="true" />
@@ -353,7 +390,7 @@ function GenerationListItem({ generation, isExpanded, onToggle, isLatest, isGene
                     <span className={`text-[11px] font-semibold uppercase tracking-wide ${logLevelClass(log.level)}`}>
                       {(log.level ?? "info").toUpperCase()}
                     </span>
-                    <p className="leading-snug text-zinc-800">{log.content}</p>
+                    <p className="leading-snug text-zinc-800 dark:text-zinc-200">{log.content}</p>
                   </div>
                 </li>
               ))}
@@ -578,16 +615,18 @@ function logLevelDotClass(level?: "info" | "success" | "error"): string {
 
 function WelcomePanel() {
   return (
-    <div className="mb-8 rounded-3xl border border-dashed border-zinc-200 bg-gradient-to-b from-white to-zinc-50 px-6 py-10 text-center">
-      <p className="text-sm uppercase tracking-wide text-zinc-500">job-hunt.email</p>
-      <h2 className="mt-3 text-3xl font-semibold text-zinc-900">AI Job Application Assisstant</h2>
-      <p className="mt-2 text-base text-zinc-500">Paste a URL, drop in a job description and get a customized cv with the click of a button</p>
-      <div className="mt-8 grid gap-4 md:grid-cols-3">
+    <div className="mb-8 rounded-3xl border border-dashed border-zinc-200 dark:border-zinc-700 bg-gradient-to-b from-white to-zinc-50 dark:from-zinc-900 dark:to-zinc-950 px-6 py-10 text-center">
+      <p className="text-sm uppercase tracking-wide text-zinc-500 dark:text-zinc-400">job-hunt.email</p>
+      <h2 className="mt-3 text-3xl font-semibold text-zinc-900 dark:text-zinc-100">AI Job Application Assisstant</h2>
+      <p className="mt-2 text-base text-zinc-500 dark:text-zinc-400">Paste a URL, drop in a job description and get a customized cv with the click of a button</p>
+      <div className="mt-8 grid gap-4 sm:grid-cols-2 md:grid-cols-3">
         {["Paste a URL", "Paste Job Description", "Refine Content"].map((title, index) => (
-          <div key={title} className="rounded-2xl border border-zinc-100 bg-white px-4 py-6 text-left shadow-sm">
-            <div className="text-2xl">{["🔗", "📝", "💬"][index]}</div>
-            <p className="mt-3 text-base font-semibold text-zinc-900">{title}</p>
-            <p className="mt-1 text-sm text-zinc-500">
+          <div key={title} className="rounded-2xl border border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-4 py-6 text-left shadow-sm">
+            <div className="text-2xl text-zinc-700 dark:text-zinc-300">
+              <FontAwesomeIcon icon={[faLink, faFileLines, faComments][index]} />
+            </div>
+            <p className="mt-3 text-base font-semibold text-zinc-900 dark:text-zinc-100">{title}</p>
+            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
               {index === 0
                 ? "Drop a job posting link to auto-extract details."
                 : index === 1
@@ -608,9 +647,9 @@ function ArtifactsPanel() {
       return [];
     }
     return [
-      { label: "CV", value: generatedDocuments.cv, icon: "📄" },
-      { label: "Cover Letter", value: generatedDocuments.coverLetter, icon: "✉️" },
-      { label: "Cold Email", value: generatedDocuments.coldEmail, icon: "📬" },
+      { label: "CV", value: generatedDocuments.cv, icon: faFilePdf },
+      { label: "Cover Letter", value: generatedDocuments.coverLetter, icon: faFileLines },
+      { label: "Cold Email", value: generatedDocuments.coldEmail, icon: faEnvelope },
     ].filter((entry) => Boolean(entry.value));
   }, [generatedDocuments]);
 
@@ -620,7 +659,7 @@ function ArtifactsPanel() {
 
   return (
     <section className="mt-6 space-y-4">
-      <p className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Generated Artifacts</p>
+      <p className="text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Generated Artifacts</p>
       {entries.map((entry) => (
         <ArtifactCard key={entry.label} label={entry.label} icon={entry.icon} payload={entry.value} />
       ))}
@@ -628,9 +667,11 @@ function ArtifactsPanel() {
   );
 }
 
+import { IconDefinition } from "@fortawesome/fontawesome-svg-core";
+
 type ArtifactCardProps = {
   label: string;
-  icon: string;
+  icon: IconDefinition;
   payload?: ArtifactPayload;
 };
 
@@ -662,57 +703,63 @@ function ArtifactCard({ label, icon, payload }: ArtifactCardProps) {
   };
 
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+    <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 shadow-sm">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-base font-semibold text-zinc-900">
-          <span>{icon}</span>
+        <div className="flex items-center gap-2 text-base font-semibold text-zinc-900 dark:text-zinc-100">
+          <FontAwesomeIcon icon={icon} />
           {label}
         </div>
         <div className="flex gap-2">
           {downloadUrl ? (
             <a
               href={downloadUrl}
-              className="text-xs font-semibold text-emerald-600 transition hover:text-emerald-800"
+              className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 transition hover:text-emerald-800 dark:hover:text-emerald-300 flex items-center gap-1"
               download={downloadName}
             >
-              Download
+              <FontAwesomeIcon icon={faDownload} />
+              <span className="hidden sm:inline">Download</span>
             </a>
           ) : null}
           {canCopy ? (
             <button
               type="button"
-              className="text-xs font-semibold text-zinc-500 transition hover:text-zinc-900"
+              className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 transition hover:text-zinc-900 dark:hover:text-zinc-100"
               onClick={handleCopy}
+              title="Copy"
             >
-              Copy
+              <FontAwesomeIcon icon={faCopy} className="text-sm" />
             </button>
           ) : null}
         </div>
       </div>
       {metadataLines.length ? (
-        <p className="mt-1 text-xs text-zinc-500">{metadataLines.join(" · ")}</p>
+        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">{metadataLines.join(" · ")}</p>
       ) : null}
       {label === "CV" && changeSummary ? (
-        <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Changes Made</p>
-          <div className="prose prose-sm mt-2 text-sm text-emerald-800">
+        <div className="mt-4 rounded-2xl border border-emerald-100 dark:border-emerald-900/30 bg-emerald-50 dark:bg-emerald-900/10 px-4 py-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Changes Made</p>
+          <div className="prose prose-sm mt-2 text-sm text-emerald-800 dark:text-emerald-200 prose-headings:block prose-headings:w-full">
             <ReactMarkdown>{changeSummary}</ReactMarkdown>
           </div>
         </div>
       ) : null}
       {isPdf && previewUrl ? (
         <div className="mt-3 space-y-3">
-          <iframe
-            src={`${previewUrl}#toolbar=0&view=FitH`}
-            title={`${label} preview`}
-            className="min-h-[26rem] w-full rounded-xl border border-zinc-200"
-          />
-          <p className="text-xs text-zinc-500">
+          <div className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800">
+             <div className="h-[26rem] w-full overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
+                <iframe
+                  src={`${previewUrl}#toolbar=0&view=FitH`}
+                  title={`${label} preview`}
+                  className="h-full w-full"
+                />
+             </div>
+          </div>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
             Rendering PDF preview. Use Download for the full-resolution copy.
           </p>
         </div>
       ) : (
-        <pre className="mt-3 max-h-60 overflow-y-auto whitespace-pre-wrap rounded-xl bg-zinc-50 p-4 text-xs text-zinc-700">
+        <pre className="mt-3 max-h-60 overflow-y-auto whitespace-pre-wrap rounded-xl bg-zinc-50 dark:bg-zinc-800 p-4 text-xs text-zinc-700 dark:text-zinc-300">
           {payload.content}
         </pre>
       )}
@@ -721,7 +768,7 @@ function ArtifactCard({ label, icon, payload }: ArtifactCardProps) {
 }
 
 type ColdEmailCardProps = {
-  icon: string;
+  icon: IconDefinition;
   payload: ArtifactPayload;
 };
 
@@ -733,26 +780,28 @@ function ColdEmailCard({ icon, payload }: ColdEmailCardProps) {
   const downloadUrl = buildSecureDownloadUrl(payload, { disposition: "attachment" });
 
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+    <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 shadow-sm">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-base font-semibold text-zinc-900">
-          <span>{icon}</span>
+        <div className="flex items-center gap-2 text-base font-semibold text-zinc-900 dark:text-zinc-100">
+          <FontAwesomeIcon icon={icon} />
           Cold Email
         </div>
         <div className="flex gap-2">
           <a
             href={mailto}
-            className="rounded-full bg-emerald-600 px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500"
+            className="rounded-full bg-emerald-600 px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500 flex items-center gap-2"
           >
-            Compose Email
+            <FontAwesomeIcon icon={faEnvelope} />
+            <span className="hidden sm:inline">Compose Email</span>
           </a>
           {downloadUrl ? (
             <a
               href={downloadUrl}
-              className="rounded-full border border-zinc-300 px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-zinc-400 hover:text-zinc-900"
+              className="rounded-full border border-zinc-300 dark:border-zinc-600 px-3 py-1.5 text-xs font-semibold text-zinc-700 dark:text-zinc-300 transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 flex items-center gap-2"
               download="cold-email.txt"
             >
-              Raw TXT
+              <FontAwesomeIcon icon={faDownload} />
+              <span className="hidden sm:inline">Raw TXT</span>
             </a>
           ) : null}
         </div>
@@ -780,21 +829,22 @@ function CopyField({ label, value, multiline }: CopyFieldProps) {
   };
 
   return (
-    <div className="rounded-2xl border border-zinc-100 bg-zinc-50 p-3">
-      <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-zinc-500">
+    <div className="rounded-2xl border border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50 p-3">
+      <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
         <span>{label}</span>
         <button
           type="button"
           onClick={handleCopy}
-          className="text-[11px] font-semibold text-zinc-500 transition hover:text-zinc-900"
+          className="text-zinc-500 dark:text-zinc-400 transition hover:text-zinc-900 dark:hover:text-zinc-100"
+          title="Copy"
         >
-          Copy
+          <FontAwesomeIcon icon={faCopy} />
         </button>
       </div>
       {multiline ? (
-        <pre className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap text-sm text-zinc-800">{value}</pre>
+        <pre className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap text-sm text-zinc-800 dark:text-zinc-200">{value}</pre>
       ) : (
-        <p className="mt-2 truncate text-sm text-zinc-800">{value}</p>
+        <p className="mt-2 truncate text-sm text-zinc-800 dark:text-zinc-200">{value}</p>
       )}
     </div>
   );

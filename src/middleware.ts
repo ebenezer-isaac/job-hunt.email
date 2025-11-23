@@ -33,6 +33,7 @@ const REDIRECT_WHITELIST = [
   LOGIN_PATH,
   LOGOUT_PATH,
   REFRESH_TOKEN_PATH,
+  "/guide",
 ];
 
 const bootstrapLogger = createDebugLogger("middleware-bootstrap");
@@ -159,8 +160,20 @@ export function middleware(request: NextRequest) {
       nextResponse.headers.set(REQUEST_ID_HEADER, requestId);
       return nextResponse;
     },
-    handleInvalidToken: async () => {
-      middlewareLogger.warn("Invalid token detected", { pathname });
+    handleInvalidToken: async (reason) => {
+      const hasAuthCookie = request.cookies.has(authCookieOptions.cookieName);
+      if (!hasAuthCookie) {
+        middlewareLogger.info("Unauthenticated access attempt", { pathname });
+        const response = redirectToLogin(request, {
+          path: LOGIN_PAGE_PATH,
+          redirectParamKeyName: loginRedirectParamKey,
+          publicPaths: REDIRECT_WHITELIST,
+        });
+        response.headers.set(REQUEST_ID_HEADER, requestId);
+        return response;
+      }
+
+      middlewareLogger.warn("Invalid token detected", { pathname, reason });
       const redirectResponse = createLoginRedirectResponse(request, "invalid-token");
       redirectResponse.headers.set(REQUEST_ID_HEADER, requestId);
       return redirectResponse;

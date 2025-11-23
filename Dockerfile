@@ -17,7 +17,7 @@ COPY . .
 RUN --mount=type=secret,id=env \
     sed 's/\r$//' /run/secrets/env > /tmp/env && \
     set -a && . /tmp/env && set +a && \
-    npm run build
+    BUILD_STANDALONE=true npm run build
 RUN npm prune --omit=dev \
  && npm install --no-save typescript@5.9.3
 
@@ -30,7 +30,6 @@ ENV NODE_ENV=production \
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
     texlive-full \
-    poppler-utils \
     ghostscript \
     fonts-noto \
     fonts-lmodern \

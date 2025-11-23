@@ -19,12 +19,13 @@ async function readSeedFile(filename: string): Promise<string> {
   }
 }
 
-export default async function Home() {
+export default async function Home({ searchParams }: { searchParams: Promise<{ sessionId?: string }> }) {
   const tokens = await requireServerAuthTokens().catch(() => null);
   if (!tokens) {
     redirect(`${LOGIN_PAGE_PATH}?next=/`);
   }
 
+  const { sessionId: requestedSessionId } = await searchParams;
   const userId = tokens.decodedToken.uid;
   const userProfile = {
     displayName: tokens.decodedToken.name ?? tokens.decodedToken.email ?? "Workspace",
@@ -49,10 +50,14 @@ export default async function Home() {
     ]);
 
   const serializedSessions = serializeSessions(sessionRecords);
+  const targetSession = requestedSessionId 
+    ? serializedSessions.find(s => s.id === requestedSessionId) 
+    : null;
+
   const initialState = {
     sessions: serializedSessions,
-    currentSessionId: serializedSessions[0]?.id ?? null,
-    chatHistory: serializedSessions[0]?.chatHistory ?? [],
+    currentSessionId: targetSession?.id ?? null,
+    chatHistory: targetSession?.chatHistory ?? [],
     sourceDocuments: {
       originalCV: storedDocuments.originalCV,
       extensiveCV: storedDocuments.extensiveCV,

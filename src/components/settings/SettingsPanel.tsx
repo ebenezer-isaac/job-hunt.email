@@ -94,30 +94,21 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     debouncedSave(docType, value);
   };
 
-  const handleFileUpload = async (docType: DocKey, file: File | null) => {
-    if (!file) {
-      return;
-    }
-    const text = await file.text();
-    handleChange(docType, text);
-    toast.success(`${TEXT_DOCS[docType].label} updated from file`);
-  };
-
   return (
     <section className="flex h-full flex-col gap-6">
-      <header className="flex flex-wrap items-start justify-between gap-4 rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
+      <header className="flex flex-wrap items-start justify-between gap-4 rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 shadow-sm">
         <div>
           <p className="text-xs uppercase tracking-widest text-zinc-400">Source documents</p>
-          <h2 className="mt-1 text-2xl font-semibold text-zinc-900">Manage your CV inputs</h2>
-          <p className="mt-2 text-sm text-zinc-500">
-            Updates auto-save every few keystrokes. Upload .tex files for CVs and plain text for supporting content.
+          <h2 className="mt-1 text-2xl font-semibold text-zinc-900 dark:text-zinc-100">Manage your CV inputs</h2>
+          <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+            Updates auto-save every few keystrokes. Paste your CV content and supporting context below.
           </p>
         </div>
         {onClose ? (
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full border border-zinc-300 px-4 py-2 text-xs font-semibold text-zinc-600 transition hover:border-zinc-400 hover:text-zinc-900"
+            className="rounded-full border border-zinc-300 dark:border-zinc-600 px-4 py-2 text-xs font-semibold text-zinc-600 dark:text-zinc-400 transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
           >
             ← Back to workspace
           </button>
@@ -132,10 +123,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             value={docType === "original_cv" ? sourceDocuments.originalCV : sourceDocuments.extensiveCV}
             status={saveState[docType]}
             onChange={(value) => handleChange(docType, value)}
-            onUpload={(file) => handleFileUpload(docType, file)}
             onBlur={() => debouncedSave.flush?.()}
             placeholder={docType === "original_cv" ? "Paste the full LaTeX (.tex) CV here" : "Paste supporting context here"}
-            accept={docType === "original_cv" ? ".tex,.txt" : ".txt,.md,.docx"}
           />
         ))}
       </div>
@@ -143,7 +132,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       <section className="mt-6 space-y-4">
         <header>
           <p className="text-xs uppercase tracking-widest text-zinc-400">Strategy playbooks</p>
-          <h3 className="text-lg font-semibold text-zinc-900">Control voice & constraints</h3>
+          <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Control voice & constraints</h3>
         </header>
         <div className="grid gap-4 md:grid-cols-2">
           {(Object.keys(STRATEGY_DOCS) as StrategyKey[]).map((docType) => {
@@ -163,6 +152,24 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           })}
         </div>
       </section>
+
+      <footer className="mt-8 border-t border-zinc-200 dark:border-zinc-800 pt-6 text-center">
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          💡 <strong>Need a LaTeX CV?</strong> Use{" "}
+          <a href="https://resumake.io" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800 dark:hover:text-blue-300">
+            Resumake.io
+          </a>{" "}
+          to build one online. Edit with{" "}
+          <a href="https://www.overleaf.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800 dark:hover:text-blue-300">
+            Overleaf
+          </a>.
+        </p>
+        <p className="mt-2 text-xs text-zinc-400 dark:text-zinc-500">
+          <a href="https://github.com/ebenezer-isaac/job-hunt.email" target="_blank" rel="noopener noreferrer" className="hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">
+            View on GitHub
+          </a>
+        </p>
+      </footer>
     </section>
   );
 }
@@ -173,39 +180,28 @@ type DocumentEditorProps = {
   value: string;
   status: SaveState;
   onChange: (next: string) => void;
-  onUpload: (file: File | null) => void;
   onBlur?: () => void;
   placeholder: string;
-  accept?: string;
 };
 
 function DocumentEditor(props: DocumentEditorProps) {
-  const { label, helper, value, status, onChange, onUpload, onBlur, placeholder, accept } = props;
+  const { label, helper, value, status, onChange, onBlur, placeholder } = props;
   return (
-    <div className="flex h-full flex-col rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
+    <div className="flex h-full flex-col rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5 shadow-sm">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-base font-semibold text-zinc-900">{label}</p>
-          <p className="text-xs text-zinc-500">{helper}</p>
+          <p className="text-base font-semibold text-zinc-900 dark:text-zinc-100">{label}</p>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">{helper}</p>
         </div>
-        <label className="cursor-pointer rounded-full border border-dashed border-zinc-300 px-3 py-1 text-xs font-semibold text-zinc-700 transition hover:border-zinc-400">
-          Upload
-          <input
-            type="file"
-            accept={accept ?? ".txt,.md,.docx"}
-            className="hidden"
-            onChange={(event) => onUpload(event.target.files?.[0] ?? null)}
-          />
-        </label>
       </div>
       <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onBlur={onBlur}
-        className="mt-4 min-h-[320px] flex-1 rounded-3xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-sm text-zinc-800 focus:border-zinc-900 focus:bg-white focus:outline-none"
+        className="mt-4 min-h-[320px] flex-1 rounded-3xl border border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 px-4 py-3 text-sm text-zinc-800 dark:text-zinc-200 focus:border-zinc-900 dark:focus:border-zinc-500 focus:bg-white dark:focus:bg-zinc-800 focus:outline-none"
         placeholder={placeholder}
       />
-      <p className="mt-2 text-xs text-zinc-500">
+      <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
         Status:{" "}
         <span className={statusClassName(status)}>
           {status === "idle" && "Idle"}
@@ -244,11 +240,11 @@ type StrategyEditorProps = {
 
 function StrategyEditor({ label, helper, value, status, readOnly }: StrategyEditorProps) {
   return (
-    <div className="rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm">
+    <div className="rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-zinc-900">{label}</p>
-          <p className="text-xs text-zinc-500">{helper}</p>
+          <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{label}</p>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">{helper}</p>
         </div>
       </div>
       <textarea
@@ -256,12 +252,12 @@ function StrategyEditor({ label, helper, value, status, readOnly }: StrategyEdit
         readOnly={readOnly}
         disabled={readOnly}
         rows={6}
-        className={`mt-3 w-full rounded-2xl border px-3 py-2 text-xs text-zinc-800 focus:outline-none ${
-          readOnly ? 'border-zinc-100 bg-zinc-50 text-zinc-500' : 'border-zinc-100 bg-zinc-50 focus:border-zinc-900 focus:bg-white'
+        className={`mt-3 w-full rounded-2xl border px-3 py-2 text-xs text-zinc-800 dark:text-zinc-200 focus:outline-none ${
+          readOnly ? 'border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400' : 'border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 focus:border-zinc-900 dark:focus:border-zinc-500 focus:bg-white dark:focus:bg-zinc-800'
         }`}
         placeholder="Global playbook"
       />
-      <p className="mt-2 text-xs text-zinc-500">
+      <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
         Status: <span className={statusClassName(status)}>{statusLabel(status)}</span>
       </p>
     </div>
