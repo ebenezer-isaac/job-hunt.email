@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { useChat, type ChatInput, type ChatResult } from "@/hooks/useChat";
 import { ChatView } from "@/components/chat/ChatView";
 import { useSessionStore, type ClientSession } from "@/store/session-store";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faFire, faSnowflake } from "@fortawesome/free-solid-svg-icons";
 
 export function ChatInterface() {
   const { sendMessage, isGenerating } = useChat();
@@ -246,7 +248,7 @@ export function ChatInterface() {
     <div className="flex h-full flex-col gap-4">
       <ChatView />
       <form onSubmit={handleSubmit} className="rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 dark:border-zinc-800 pb-4">
+        <div className="flex flex-col gap-4 border-b border-zinc-100 dark:border-zinc-800 pb-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs uppercase tracking-widest text-zinc-400">Mode</p>
             <p className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
@@ -358,7 +360,9 @@ export function ChatInterface() {
         </label>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-zinc-500 dark:text-zinc-400">
           <p>
-            Tip: Paste a URL in cold mode to trigger reconnaissance and contact targeting logic.
+            {isColdOutreach 
+              ? "Tip: Paste a URL in cold mode to trigger reconnaissance and contact targeting logic."
+              : "Tip: Provide a job description to generate a tailored CV and cover letter."}
           </p>
           <div className="flex gap-2">
             {retryAvailable ? (
@@ -415,18 +419,18 @@ function ModeToggle({ mode, onToggle }: ModeToggleProps) {
       <span aria-hidden="true" className="pointer-events-none absolute inset-0 bg-white/10" />
       <div className="relative flex h-10 w-full items-center justify-between px-1">
         <span
-          className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-full text-lg transition duration-300 ${
+          className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-full text-sm transition duration-300 ${
             isCold ? "text-white/60" : "bg-white text-orange-500"
           }`}
         >
-          🔥
+          <FontAwesomeIcon icon={faFire} />
         </span>
         <span
-          className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-full text-lg transition duration-300 ${
+          className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-full text-sm transition duration-300 ${
             isCold ? "bg-white text-sky-600" : "text-white/70"
           }`}
         >
-          ❄️
+          <FontAwesomeIcon icon={faSnowflake} />
         </span>
         <span
           aria-hidden="true"

@@ -181,11 +181,16 @@ export function useSessionSubscription(userId: string | null) {
 
   useEffect(() => {
     if (!userId || !authReady || typeof window === "undefined") {
-      logger.warn("Firestore subscription prerequisites missing", {
-        userIdPresent: Boolean(userId),
-        authReady,
-        hasWindow: typeof window !== "undefined",
-      });
+      // Suppress warning if just waiting for auth
+      if (userId && !authReady) {
+        logger.step("Waiting for auth ready state", { userId });
+      } else {
+        logger.warn("Firestore subscription prerequisites missing", {
+          userIdPresent: Boolean(userId),
+          authReady,
+          hasWindow: typeof window !== "undefined",
+        });
+      }
       return undefined;
     }
 

@@ -17,7 +17,7 @@ COPY . .
 RUN --mount=type=secret,id=env \
     sed 's/\r$//' /run/secrets/env > /tmp/env && \
     set -a && . /tmp/env && set +a && \
-    npm run build
+    BUILD_STANDALONE=true npm run build
 RUN npm prune --omit=dev \
  && npm install --no-save typescript@5.9.3
 

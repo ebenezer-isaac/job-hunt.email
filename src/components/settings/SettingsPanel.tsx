@@ -94,15 +94,6 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     debouncedSave(docType, value);
   };
 
-  const handleFileUpload = async (docType: DocKey, file: File | null) => {
-    if (!file) {
-      return;
-    }
-    const text = await file.text();
-    handleChange(docType, text);
-    toast.success(`${TEXT_DOCS[docType].label} updated from file`);
-  };
-
   return (
     <section className="flex h-full flex-col gap-6">
       <header className="flex flex-wrap items-start justify-between gap-4 rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 shadow-sm">
@@ -110,17 +101,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           <p className="text-xs uppercase tracking-widest text-zinc-400">Source documents</p>
           <h2 className="mt-1 text-2xl font-semibold text-zinc-900 dark:text-zinc-100">Manage your CV inputs</h2>
           <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-            Updates auto-save every few keystrokes. Upload .tex files for CVs and plain text for supporting content.
-          </p>
-          <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">
-            💡 <strong>Need a LaTeX CV?</strong> Use{" "}
-            <a href="https://resumake.io" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800 dark:hover:text-blue-300">
-              Resumake.io
-            </a>{" "}
-            to build one online. Edit with{" "}
-            <a href="https://www.overleaf.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800 dark:hover:text-blue-300">
-              Overleaf
-            </a>.
+            Updates auto-save every few keystrokes. Paste your CV content and supporting context below.
           </p>
         </div>
         {onClose ? (
@@ -142,10 +123,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             value={docType === "original_cv" ? sourceDocuments.originalCV : sourceDocuments.extensiveCV}
             status={saveState[docType]}
             onChange={(value) => handleChange(docType, value)}
-            onUpload={(file) => handleFileUpload(docType, file)}
             onBlur={() => debouncedSave.flush?.()}
             placeholder={docType === "original_cv" ? "Paste the full LaTeX (.tex) CV here" : "Paste supporting context here"}
-            accept={docType === "original_cv" ? ".tex,.txt" : ".txt,.md,.docx"}
           />
         ))}
       </div>
@@ -173,6 +152,24 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           })}
         </div>
       </section>
+
+      <footer className="mt-8 border-t border-zinc-200 dark:border-zinc-800 pt-6 text-center">
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          💡 <strong>Need a LaTeX CV?</strong> Use{" "}
+          <a href="https://resumake.io" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800 dark:hover:text-blue-300">
+            Resumake.io
+          </a>{" "}
+          to build one online. Edit with{" "}
+          <a href="https://www.overleaf.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800 dark:hover:text-blue-300">
+            Overleaf
+          </a>.
+        </p>
+        <p className="mt-2 text-xs text-zinc-400 dark:text-zinc-500">
+          <a href="https://github.com/ebenezer-isaac/job-hunt.email" target="_blank" rel="noopener noreferrer" className="hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">
+            View on GitHub
+          </a>
+        </p>
+      </footer>
     </section>
   );
 }
@@ -183,14 +180,12 @@ type DocumentEditorProps = {
   value: string;
   status: SaveState;
   onChange: (next: string) => void;
-  onUpload: (file: File | null) => void;
   onBlur?: () => void;
   placeholder: string;
-  accept?: string;
 };
 
 function DocumentEditor(props: DocumentEditorProps) {
-  const { label, helper, value, status, onChange, onUpload, onBlur, placeholder, accept } = props;
+  const { label, helper, value, status, onChange, onBlur, placeholder } = props;
   return (
     <div className="flex h-full flex-col rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5 shadow-sm">
       <div className="flex items-center justify-between">
@@ -198,15 +193,6 @@ function DocumentEditor(props: DocumentEditorProps) {
           <p className="text-base font-semibold text-zinc-900 dark:text-zinc-100">{label}</p>
           <p className="text-xs text-zinc-500 dark:text-zinc-400">{helper}</p>
         </div>
-        <label className="cursor-pointer rounded-full border border-dashed border-zinc-300 dark:border-zinc-600 px-3 py-1 text-xs font-semibold text-zinc-700 dark:text-zinc-300 transition hover:border-zinc-400 dark:hover:border-zinc-500">
-          Upload
-          <input
-            type="file"
-            accept={accept ?? ".txt,.md,.docx"}
-            className="hidden"
-            onChange={(event) => onUpload(event.target.files?.[0] ?? null)}
-          />
-        </label>
       </div>
       <textarea
         value={value}

@@ -27,7 +27,7 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: __dirname,
   },
-  output: "standalone",
+  output: process.env.BUILD_STANDALONE === "true" ? "standalone" : undefined,
 };
 
 configLogger.data("next-config", nextConfig);
