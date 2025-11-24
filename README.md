@@ -215,6 +215,14 @@ We use `next-firebase-auth-edge` in `src/middleware.ts`.
 *   **Model Routing**: Simple tasks (parsing job descriptions) are routed to **Gemini Flash** for speed and cost-efficiency. Complex reasoning (writing cover letters, strategic analysis) goes to **Gemini Pro**.
 *   **Resiliency**: The client implements exponential backoff for `429` (Rate Limit) and `503` (Service Unavailable) errors, ensuring long-running batch jobs don't fail due to transient API hiccups.
 
+### Internal Logging Endpoint (`/api/log`)
+
+*   **Internal token required**: Every POST must include the `x-internal-token` header that matches `ACCESS_CONTROL_INTERNAL_TOKEN`. Regular authenticated tenants can no longer hit this surface.
+*   **Payload guardrails**: Requests larger than ~16KB are rejected upfront with `413`, and the body is streamed/terminated without reaching Firestore.
+*   **Per-minute throttling**: Each caller (keyed by `x-log-client`, request id, or IP) can write up to 120 entries/minute before receiving a `429`.
+*   **Data hygiene**: `message`/`scope` lengths are validated, log data is sanitized via `sanitizeForLogging` (1KB string cap), nested structures are truncated, and the stdout mirror only emits the sanitized payload.
+*   **Operational impact**: Update any custom log forwarders or cron jobs to send `x-internal-token` + a stable `x-log-client` value so the rate limiter buckets traffic predictably.
+
 ### Directory Structure
 
 ```text

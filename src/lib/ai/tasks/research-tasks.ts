@@ -1,6 +1,7 @@
 import { MODEL_TYPES, type ModelClient } from "../model-client";
 import { renderPrompt } from "../prompts";
 import type { ResearchCompanyInput } from "../service-types";
+import { clampStrategyForContext } from "../strategy-docs";
 import { createDebugLogger } from "@/lib/debug-logger";
 
 const logger = createDebugLogger("research-tasks");
@@ -13,12 +14,12 @@ export function createResearchTasks(client: ModelClient) {
         companyName: input.companyName,
         roleContext: input.roleContext ?? "",
         originalCV: input.originalCV,
-        reconStrategy: input.reconStrategy,
+        reconStrategy: clampStrategyForContext("reconStrategy", input.reconStrategy),
       });
       try {
         const result = await client.generateJsonWithRetry<Record<string, unknown>>(
           prompt,
-          MODEL_TYPES.THINKING,
+          MODEL_TYPES.PRO,
           // @ts-expect-error - googleSearch is not yet in the Tool type definition
           [{ googleSearch: {} }]
         );

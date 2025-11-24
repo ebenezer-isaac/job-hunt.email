@@ -62,6 +62,17 @@ export function middleware(request: NextRequest) {
   forwardedHeaders.set(REQUEST_ID_HEADER, requestId);
   const internalToken = getInternalToken();
   const serverOrigin = resolveServerOrigin(request);
+
+  if (pathname === LOG_ENDPOINT_PATH) {
+    if (internalToken) {
+      forwardedHeaders.set(INTERNAL_TOKEN_HEADER, internalToken);
+    }
+    const logBypassResponse = NextResponse.next({
+      request: { headers: forwardedHeaders },
+    });
+    logBypassResponse.headers.set(REQUEST_ID_HEADER, requestId);
+    return logBypassResponse;
+  }
   const logTransport = internalToken
     ? createHttpLogTransport(serverOrigin, {
         headers: {

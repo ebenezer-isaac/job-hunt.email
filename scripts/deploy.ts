@@ -4,7 +4,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SERVICE_NAME = process.env.CLOUD_RUN_SERVICE ?? "job-hunt-email";
-const REGION = process.env.CLOUD_RUN_REGION ?? "us-central1";
 const CLOUD_BUILD_FILE = process.env.CLOUD_BUILD_FILE ?? "cloudbuild.yaml";
 const ENV_FILE = process.env.DEPLOY_ENV_FILE ?? ".env.build";
 const GCLOUD_BIN = process.env.GCLOUD_BIN ?? (process.platform === "win32" ? "gcloud.cmd" : "gcloud");
@@ -127,7 +126,7 @@ function shouldUpdateSecret(name: string, newValue: string): boolean {
     const currentValue = result.stdout.trim();
     // Compare trimmed values to avoid issues with trailing newlines
     return currentValue !== newValue.trim();
-  } catch (error) {
+  } catch {
     // If any error occurs (e.g. network), assume we need to update to be safe
     return true;
   }

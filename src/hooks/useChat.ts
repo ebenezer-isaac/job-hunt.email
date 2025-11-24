@@ -44,28 +44,31 @@ export function useChat() {
   const { consume, reset } = useStreamableValue();
   const activeRequestIdRef = useRef<string | null>(null);
 
-  const ensureSession = useCallback(async (metadata: ChatInput): Promise<string> => {
-    if (currentSessionId) {
-      return currentSessionId;
-    }
+  const ensureSession = useCallback(
+    async (metadata: ChatInput): Promise<{ sessionId: string; wasCreated: boolean }> => {
+      if (currentSessionId) {
+        return { sessionId: currentSessionId, wasCreated: false };
+      }
 
-    const session = await createSessionAction({
-      companyName: metadata.companyName,
-      jobTitle: metadata.jobTitle,
-      mode,
-      companyWebsite: metadata.companyWebsite?.trim() ?? "",
-      contactName: metadata.contactName?.trim() ?? "",
-      contactTitle: metadata.contactTitle?.trim() ?? "",
-      contactEmail: metadata.contactEmail?.trim() ?? "",
-    });
+      const session = await createSessionAction({
+        companyName: metadata.companyName,
+        jobTitle: metadata.jobTitle,
+        mode,
+        companyWebsite: metadata.companyWebsite?.trim() ?? "",
+        contactName: metadata.contactName?.trim() ?? "",
+        contactTitle: metadata.contactTitle?.trim() ?? "",
+        contactEmail: metadata.contactEmail?.trim() ?? "",
+      });
 
-    actions.setSessions([session, ...sessions]);
-    actions.selectSession(session.id);
-    return session.id;
-  }, [actions, currentSessionId, mode, sessions]);
+      actions.setSessions([session, ...sessions]);
+      return { sessionId: session.id, wasCreated: true };
+    },
+    [actions, currentSessionId, mode, sessions],
+  );
 
   const sendMessage = useCallback(async (input: ChatInput): Promise<ChatResult | null> => {
-    const trimmedDescription = input.jobDescription.trim();
+    const rawJobInput = input.jobDescription;
+    const trimmedDescription = rawJobInput.trim();
     if (!trimmedDescription && mode === "standard") {
       toast.error("Please paste a job description or URL before generating.");
       return null;
@@ -79,13 +82,17 @@ export function useChat() {
       return null;
     }
 
-    actions.setIsGenerating(true);
-    actions.setGeneratedDocuments(currentSessionId, null);
+    actions.setIsGenerating(currentSessionId ?? null, true);
+    if (currentSessionId) {
+      actions.setGeneratedDocuments(currentSessionId, null);
+    }
     reset();
 
-    let sessionId: string | null = null;
+    const generationId = createGenerationId();
+    let sessionId: string | null = currentSessionId;
     let runRequestId: string | null = null;
 
+    let streamStarted = false;
     try {
       const shouldProcessJobInput = trimmedDescription.length > 0;
       let normalized: NormalizedJobInput | null = null;
@@ -124,8 +131,19 @@ export function useChat() {
       const jobSourceUrl = normalized?.jobUrl?.trim() || resolvedCompanyWebsite || "";
       const genericEmail = detectedEmail || "hello@example.com";
       const companyProfile = normalized?.companyProfile ?? "";
+      const preservedJobInput = (() => {
+        const raw = rawJobInput.trim();
+        const resolved = resolvedJobDescription.trim();
+        if (!raw) {
+          return undefined;
+        }
+        if (raw === resolved) {
+          return undefined;
+        }
+        return rawJobInput;
+      })();
 
-      sessionId = await ensureSession({
+      const ensured = await ensureSession({
         jobDescription: resolvedJobDescription,
         companyName: resolvedCompanyName,
         jobTitle: resolvedJobTitle,
@@ -134,6 +152,13 @@ export function useChat() {
         contactTitle,
         contactEmail,
       });
+
+      sessionId = ensured.sessionId;
+      actions.setIsGenerating(sessionId, true);
+      if (ensured.wasCreated) {
+        actions.selectSession(sessionId);
+      }
+      actions.setGeneratedDocuments(sessionId, null);
 
       const requestTimestamp = new Date().toISOString();
       actions.touchSessionTimestamp(sessionId, requestTimestamp);
@@ -151,13 +176,16 @@ export function useChat() {
               contactTitle,
               contactEmail,
             });
+      const userMetadata = preservedJobInput
+        ? ({ kind: "prompt" as ChatMessageKind, rawJobInput: preservedJobInput, generationId } as const)
+        : ({ kind: "prompt" as ChatMessageKind, generationId } as const);
       const userMessage = {
           id: createMessageId(sessionId, "user"),
         role: "user" as const,
         content: userContent,
         timestamp,
         isMarkdown: false,
-        metadata: { kind: "prompt" as ChatMessageKind },
+        metadata: userMetadata,
       };
 
       actions.appendChatMessage(sessionId, userMessage);
@@ -168,6 +196,10 @@ export function useChat() {
         message: userMessage.content,
         level: "info",
         kind: "prompt",
+        payload: {
+          generationId,
+          ...(preservedJobInput ? { rawJobInput: preservedJobInput } : {}),
+        },
       });
 
       const summaryParts = [
@@ -193,7 +225,7 @@ export function useChat() {
         content: summaryParts.join("\n"),
         timestamp: new Date().toISOString(),
         level: "info" as const,
-        metadata: { kind: "summary" as ChatMessageKind },
+        metadata: { kind: "summary" as ChatMessageKind, generationId },
       };
 
       actions.appendChatMessage(sessionId, summaryMessage);
@@ -204,10 +236,12 @@ export function useChat() {
         message: summaryMessage.content,
         level: "info",
         kind: "summary",
+        payload: { generationId },
       });
 
       const formData = new FormData();
       formData.append("sessionId", sessionId);
+      formData.append("generationId", generationId);
       formData.append("jobDescription", resolvedJobDescription);
       formData.append("companyName", resolvedCompanyName);
       formData.append("jobTitle", resolvedJobTitle);
@@ -250,6 +284,7 @@ export function useChat() {
         throw new Error("Streaming response not available");
       }
 
+      streamStarted = true;
       await consume(response.body, {
         onLine(line) {
           if (!sessionId) {
@@ -261,7 +296,7 @@ export function useChat() {
             content: line,
             timestamp: new Date().toISOString(),
             level: deriveLevel(line),
-            metadata: { kind: "log" as ChatMessageKind },
+            metadata: { kind: "log" as ChatMessageKind, generationId },
             mergeDisabled: true,
           });
         },
@@ -277,7 +312,7 @@ export function useChat() {
             content: buildArtifactSummary(artifacts),
             timestamp: new Date().toISOString(),
             level: "success",
-            metadata: { kind: "summary" as ChatMessageKind },
+            metadata: { kind: "summary" as ChatMessageKind, generationId },
           });
           toast.success("Documents generated successfully");
         },
@@ -297,15 +332,15 @@ export function useChat() {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const targetSessionId = sessionId ?? currentSessionId;
-      if (targetSessionId) {
+      if (targetSessionId && streamStarted) {
         actions.setSessionStatus(targetSessionId, "failed");
         actions.appendChatMessage(targetSessionId, {
-            id: createMessageId(targetSessionId, "error"),
+          id: createMessageId(targetSessionId, "error"),
           role: "system",
           content: `Generation failed: ${message}`,
           timestamp: new Date().toISOString(),
           level: "error",
-          metadata: { kind: "summary" as ChatMessageKind },
+          metadata: { kind: "summary" as ChatMessageKind, generationId },
         });
       }
       toast.error(`Generation failed: ${message}`);
@@ -315,7 +350,7 @@ export function useChat() {
         activeRequestIdRef.current = null;
         setClientRequestId(null);
       }
-      actions.setIsGenerating(false);
+      actions.setIsGenerating(sessionId ?? null, false);
     }
   }, [actions, consume, currentSessionId, ensureSession, mode, quota, reset, sourceDocuments]);
 
@@ -365,6 +400,13 @@ function deriveLevel(line: string): "info" | "success" | "error" {
 function createMessageId(sessionId: string, role: string): string {
   const suffix = Math.random().toString(36).slice(2, 8);
   return `${sessionId}-${role}-${Date.now()}-${suffix}`;
+}
+
+function createGenerationId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `gen-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 type UserRequestSummaryArgs = {

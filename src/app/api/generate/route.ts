@@ -36,8 +36,6 @@ export async function POST(request: NextRequest) {
         requestId: requestId ?? null,
         error,
       });
-      const message =
-        error instanceof Error ? error.message : "Unknown error while processing request";
       const userMessage = "Generation failed due to an internal error.";
       return new Response(userMessage, { status: 500 });
     }

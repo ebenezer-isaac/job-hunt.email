@@ -11,8 +11,9 @@ import { createDebugLogger, REQUEST_ID_HEADER } from "@/lib/debug-logger";
 import { registerRequestLogContext } from "@/lib/logging/request-log-registry";
 import { runWithRequestIdContext } from "@/lib/logging/request-id-context";
 import { quotaService, QuotaExceededError } from "@/lib/security/quota-service";
+import { AIFailureError } from "@/lib/errors/ai-failure-error";
 
-import { formSchema, normalizeFormData, type ParsedForm } from './generate/form';
+import { formSchema, normalizeFormData, type ParsedForm, FormPayloadTooLargeError } from './generate/form';
 import { sanitizeFirestoreMap } from './generate/object-utils';
 import { createImmediateStream, createStreamController, type StreamResult } from './generate/stream';
 import { runGenerationWorkflow } from './generate/workflow';
@@ -21,24 +22,69 @@ const sessionLogger = createDebugLogger('generate-session');
 const requestLogger = createDebugLogger('generate-request');
 const PROCESSING_TIMEOUT_MS = 45 * 60_000;
 
+const ARTIFACT_PREVIEW_CHAR_LIMIT = 1000;
+
+function normalizePreview(value?: string | null): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  if (trimmed.length > ARTIFACT_PREVIEW_CHAR_LIMIT) {
+    return `${trimmed.slice(0, ARTIFACT_PREVIEW_CHAR_LIMIT)}…`;
+  }
+  return trimmed;
+}
+
+function buildArtifactPreviews(params: {
+  cv?: string | null;
+  cvChangeSummary?: string | null;
+  coverLetter?: string | null;
+  coldEmail?: string | null;
+  coldEmailSubject?: string | null;
+  coldEmailBody?: string | null;
+}) {
+  const previews = sanitizeFirestoreMap({
+    cvPreview: normalizePreview(params.cv),
+    cvChangeSummary: normalizePreview(params.cvChangeSummary),
+    coverLetterPreview: normalizePreview(params.coverLetter),
+    coldEmailPreview: normalizePreview(params.coldEmail),
+    coldEmailSubjectPreview: normalizePreview(params.coldEmailSubject),
+    coldEmailBodyPreview: normalizePreview(params.coldEmailBody),
+  });
+  return Object.keys(previews).length ? previews : undefined;
+}
+
+function isModelOverloadedError(error: unknown): boolean {
+  if (!(error instanceof AIFailureError)) {
+    return false;
+  }
+  const lower = (value: unknown) => (typeof value === 'string' ? value : value instanceof Error ? value.message : '').toLowerCase();
+  const parts = [lower(error.message), lower(error.originalError)];
+  return parts.some((text) => text.includes('model is overloaded') || text.includes('503 service unavailable'));
+}
+
 async function persistSessionSuccess(
   parsed: ParsedForm,
   userId: string,
   generatedFiles: Record<string, { key: string; url: string; label: string; mimeType?: string }>,
   parsedEmails: string[],
+  cvPreview?: string | null,
   coverLetter?: { content?: string; subject?: string; body?: string; toAddress?: string },
   coldEmail?: { content?: string; subject?: string; body?: string; toAddress?: string },
   cvPageCount?: number | null,
   cvChangeSummary?: string | null,
 ) {
-  const previews = sanitizeFirestoreMap({
-    coverLetter: coverLetter?.content,
-    coldEmail: coldEmail?.content,
-    coldEmailSubject: coldEmail?.subject,
-    coldEmailBody: coldEmail?.body,
-    cvChangeSummary: cvChangeSummary || undefined,
+  const artifactPreviews = buildArtifactPreviews({
+    cv: cvPreview,
+    cvChangeSummary,
+    coverLetter: coverLetter?.content ?? null,
+    coldEmail: coldEmail?.content ?? coldEmail?.body ?? null,
+    coldEmailSubject: coldEmail?.subject ?? null,
+    coldEmailBody: coldEmail?.body ?? coldEmail?.content ?? null,
   });
-  const artifactPreviews = Object.keys(previews).length ? previews : undefined;
 
   await sessionRepository.updateSession(parsed.sessionId, {
     status: 'completed',
@@ -56,6 +102,7 @@ async function persistSessionSuccess(
       contactTitle: parsed.contactTitle || undefined,
       contactEmail: parsed.contactEmail || undefined,
       lastGeneratedAt: new Date().toISOString(),
+      lastGenerationId: parsed.generationId,
       mode: parsed.mode,
       cvPageCount,
       artifactPreviews,
@@ -95,7 +142,26 @@ export async function generateDocumentsAction(
   formData: FormData,
   options?: GenerateOptions,
 ): Promise<{ stream: StreamResult }> {
-  const parsedResult = formSchema.safeParse(normalizeFormData(formData));
+  let normalizedForm: Record<string, string>;
+  try {
+    normalizedForm = normalizeFormData(formData);
+  } catch (error) {
+    if (error instanceof FormPayloadTooLargeError) {
+      const limitKb = Math.round(error.limitBytes / 1024);
+      requestLogger.warn("Rejected oversized form payload", {
+        actualBytes: error.actualBytes,
+        limitBytes: error.limitBytes,
+      });
+      return {
+        stream: createImmediateStream(
+          `Request exceeds the maximum payload size of ${limitKb}KB. Reduce input text or split the request.`,
+        ),
+      };
+    }
+    throw error;
+  }
+
+  const parsedResult = formSchema.safeParse(normalizedForm);
   if (!parsedResult.success) {
     const message = parsedResult.error.issues.map((issue) => issue.message).join('; ');
     return { stream: createImmediateStream(`Invalid request: ${message}`) };
@@ -210,6 +276,7 @@ export async function generateDocumentsAction(
           userId,
           result.generatedFiles,
           result.parsedEmails,
+          result.cvArtifact.payload.content ?? null,
           result.coverLetterArtifact?.payload,
           result.coldEmailArtifact?.payload,
           result.cvArtifact.payload.pageCount,
@@ -221,7 +288,7 @@ export async function generateDocumentsAction(
           userId,
           level: 'success',
           message: 'Generation completed successfully',
-          payload: { companyName: parsed.companyName, jobTitle: parsed.jobTitle },
+          payload: { companyName: parsed.companyName, jobTitle: parsed.jobTitle, generationId: parsed.generationId },
         });
 
         const artifactKeys = Object.values(result.generatedFiles).map((file) => file.key);
@@ -248,9 +315,12 @@ export async function generateDocumentsAction(
         clearTimeout(timeoutId);
         const timedOut = controller.signal.aborted;
         const internalMessage = error instanceof Error ? error.message : String(error);
+        const overloaded = isModelOverloadedError(error);
         const userMessage = timedOut
           ? 'Generation timed out after 45 minutes. Please try again.'
-          : `Generation failed due to an internal error. Email ${env.CONTACT_EMAIL} if it keeps happening.`;
+          : overloaded
+            ? 'Our AI provider is temporarily overloaded. Please try again in a few minutes.'
+            : `Generation failed due to an internal error. Email ${env.CONTACT_EMAIL} if it keeps happening.`;
         sessionLogger.error('Generation failed', {
           sessionId: parsed.sessionId,
           error: internalMessage,
@@ -270,6 +340,7 @@ export async function generateDocumentsAction(
           userId,
           level: 'error',
           message: `Generation failed: ${userMessage}`,
+          payload: { generationId: parsed.generationId },
         });
       } finally {
         await close();

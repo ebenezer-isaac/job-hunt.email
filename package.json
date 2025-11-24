@@ -3,11 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "tsx scripts/dev.ts",
     "dev:nodemon": "nodemon --config nodemon.json",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
     "seed:vector-store": "tsx scripts/seed-vector-store.ts",
     "deploy": "tsx scripts/deploy.ts"
   },
@@ -54,6 +55,7 @@
     "eslint-config-next": "15.5.6",
     "postcss": "^8.5.6",
     "tailwindcss": "^4",
-    "tsx": "^4.20.6"
+    "tsx": "^4.20.6",
+    "vitest": "^1.6.0"
   }
 }

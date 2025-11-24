@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { Timestamp, type FirestoreDataConverter, type DocumentData } from "firebase-admin/firestore";
+import { env } from "@/env";
 import { getDb } from "@/lib/firebase-admin";
 import { createDebugLogger } from "@/lib/debug-logger";
+import { sanitizeForStorage } from "@/lib/logging/redaction";
+import { quotaService } from "@/lib/security/quota-service";
 
 export type SessionStatus =
   | "processing"
@@ -59,6 +62,8 @@ export type UpdateSessionInput = {
 };
 
 const collectionName = "sessions";
+const PROCESSING_TIMEOUT_MS = 45 * 60_000;
+const STALE_PROCESSING_GRACE_MS = 30_000;
 
 const sessionLogger = createDebugLogger("session-repository");
 sessionLogger.step("Session repository initializing");
@@ -117,12 +122,14 @@ export class SessionRepository {
   private readonly db = getDb();
   private readonly collection = this.db.collection(collectionName).withConverter(converter);
   private readonly logger = createDebugLogger("session-repository-instance");
+  private readonly metadataValueLimit = env.MAX_CONTENT_LENGTH;
 
   async createSession(input: CreateSessionInput): Promise<SessionRecord> {
     this.logger.step("Creating session", input);
     const now = new Date();
     const id = this.createSessionId(input.userId, input.companyName, input.jobTitle);
     this.logger.data("create-session-metadata", { now, id });
+    const sanitizedMetadata = this.sanitizeMetadataForPersistence(input.metadata);
 
     const record: SessionRecord = {
       id,
@@ -132,7 +139,7 @@ export class SessionRepository {
       locked: false,
       chatHistory: [],
       generatedFiles: {},
-      metadata: input.metadata ?? {},
+      metadata: sanitizedMetadata ?? {},
       createdAt: now,
       updatedAt: now,
       version: 1,
@@ -159,7 +166,10 @@ export class SessionRepository {
         generatedFiles: Object.keys(data.generatedFiles ?? {}).length,
       });
     }
-    return data;
+    if (!data) {
+      return null;
+    }
+    return this.recoverProcessingStatusIfNeeded(data);
   }
 
   async listSessions(userId: string): Promise<SessionRecord[]> {
@@ -168,8 +178,17 @@ export class SessionRepository {
     const sessions = snapshot.docs
       .map((doc) => doc.data())
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-    this.logger.data("list-sessions-result", { count: sessions.length });
-    return sessions;
+    const resolvedSessions: SessionRecord[] = [];
+    let recovered = 0;
+    for (const session of sessions) {
+      const updated = await this.recoverProcessingStatusIfNeeded(session);
+      if (updated !== session && session.status === "processing") {
+        recovered += 1;
+      }
+      resolvedSessions.push(updated);
+    }
+    this.logger.data("list-sessions-result", { count: resolvedSessions.length, recovered });
+    return resolvedSessions;
   }
 
   async updateSession(id: string, updates: UpdateSessionInput, userId: string): Promise<SessionRecord> {
@@ -197,10 +216,14 @@ export class SessionRepository {
       }
 
       const nextVersion = current.version + 1;
-      const sanitizedMetadata = updates.metadata
+      const metadataUpdates = updates.metadata
+        ? this.sanitizeMetadataForPersistence(omitUndefined(updates.metadata))
+        : undefined;
+
+      const sanitizedMetadata = metadataUpdates
         ? {
             ...current.metadata,
-            ...(omitUndefined(updates.metadata) ?? {}),
+            ...metadataUpdates,
           }
         : current.metadata;
 
@@ -264,7 +287,7 @@ export class SessionRepository {
         if (!cleanedPayload || Object.keys(cleanedPayload).length === 0) {
           delete sanitizedEntry.payload;
         } else {
-          sanitizedEntry.payload = cleanedPayload;
+          sanitizedEntry.payload = sanitizePayloadForStorage(cleanedPayload, this.metadataValueLimit);
         }
       }
 
@@ -287,6 +310,196 @@ export class SessionRepository {
     });
   }
 
+  async deleteSession(id: string, userId: string): Promise<{ deletedFileKeys: string[] }> {
+    this.logger.step("Deleting session", { id, userId });
+    return this.db.runTransaction(async (tx) => {
+      const ref = this.collection.doc(id);
+      const snap = await tx.get(ref);
+      if (!snap.exists) {
+        this.logger.warn("Session not found during delete", { id });
+        throw new Error(`Session ${id} not found`);
+      }
+      const current = snap.data();
+      if (!current) {
+        throw new Error(`Session ${id} failed to deserialize`);
+      }
+      if (current.userId !== userId) {
+        this.logger.error("Session ownership mismatch during delete", {
+          id,
+          expectedUserId: current.userId,
+          providedUserId: userId,
+        });
+        throw new Error("Session ownership validation failed");
+      }
+
+      const deletedFileKeys = extractFileKeys(current.generatedFiles);
+      tx.delete(ref);
+      this.logger.step("Session deleted", { id });
+      return { deletedFileKeys };
+    });
+  }
+
+  async deleteGeneration(
+    id: string,
+    generationId: string,
+    userId: string,
+    messageIds?: string[],
+  ): Promise<{ updated: SessionRecord; deletedFileKeys: string[]; isLatest: boolean }> {
+    this.logger.step("Deleting generation", { id, generationId, userId });
+    let releaseHoldKey: string | null = null;
+    const result = await this.db.runTransaction(async (tx) => {
+      const ref = this.collection.doc(id);
+      const snap = await tx.get(ref);
+      if (!snap.exists) {
+        throw new Error(`Session ${id} not found`);
+      }
+      const current = snap.data();
+      if (!current) {
+        throw new Error(`Session ${id} failed to deserialize`);
+      }
+      if (current.userId !== userId) {
+        throw new Error("Session ownership validation failed");
+      }
+
+      const messageIdSet = new Set(messageIds?.filter((value) => Boolean(value)) ?? []);
+      const filteredHistory = (current.chatHistory ?? []).filter((entry) => {
+        if (entry.payload?.generationId === generationId) {
+          return false;
+        }
+        if (entry.id && messageIdSet.has(entry.id)) {
+          return false;
+        }
+        return true;
+      });
+      const isLatest = current.metadata?.lastGenerationId === generationId;
+      const deletedFileKeys = isLatest ? extractFileKeys(current.generatedFiles) : [];
+      const cleanedMetadata = { ...(current.metadata ?? {}) } as Record<string, unknown>;
+      if (isLatest) {
+        delete cleanedMetadata.lastGenerationId;
+        delete cleanedMetadata.lastGeneratedAt;
+        delete cleanedMetadata.artifactPreviews;
+        delete cleanedMetadata.cvChangeSummary;
+        delete cleanedMetadata.coldEmailSubject;
+        delete cleanedMetadata.coldEmailBody;
+        delete cleanedMetadata.coldEmailTo;
+      }
+
+      const hadProcessingState = current.status === "processing";
+      const fallbackStatus: SessionStatus = hadProcessingState
+        ? hasGeneratedArtifacts(current)
+          ? "completed"
+          : "failed"
+        : current.status;
+      const holdKey = readActiveHoldKey(current.metadata);
+      if (hadProcessingState) {
+        cleanedMetadata.activeHoldKey = null;
+        cleanedMetadata.processingHoldStartedAt = null;
+        releaseHoldKey = holdKey;
+      }
+
+      const updated: SessionRecord = {
+        ...current,
+        chatHistory: filteredHistory,
+        generatedFiles: isLatest ? {} : current.generatedFiles,
+        metadata: cleanedMetadata,
+        updatedAt: new Date(),
+        version: current.version + 1,
+        status: fallbackStatus,
+        processingStartedAt: hadProcessingState ? undefined : current.processingStartedAt,
+        processingDeadline: hadProcessingState ? undefined : current.processingDeadline,
+      };
+
+      tx.set(ref, updated);
+      this.logger.step("Generation deleted", { id, generationId, isLatest });
+      return { updated, deletedFileKeys, isLatest };
+    });
+
+    if (releaseHoldKey) {
+      await this.releaseQuotaHold(userId, releaseHoldKey, id);
+    }
+
+    return result;
+  }
+
+  private async recoverProcessingStatusIfNeeded(session: SessionRecord): Promise<SessionRecord> {
+    if (session.status !== "processing") {
+      return session;
+    }
+    if (!this.hasProcessingExpired(session)) {
+      return session;
+    }
+    const holdKey = readActiveHoldKey(session.metadata);
+    this.logger.warn("Detected stale processing session", {
+      sessionId: session.id,
+      userId: session.userId,
+      processingDeadline: session.processingDeadline ?? null,
+    });
+    try {
+      const fallbackStatus: SessionStatus = hasGeneratedArtifacts(session) ? "completed" : "failed";
+      const updated = await this.updateSession(
+        session.id,
+        {
+          status: fallbackStatus,
+          processingStartedAt: null,
+          processingDeadline: null,
+          metadata: { activeHoldKey: null, processingHoldStartedAt: null },
+        },
+        session.userId,
+      );
+      await this.releaseQuotaHold(session.userId, holdKey, session.id);
+      return updated;
+    } catch (error) {
+      this.logger.error("Failed to recover stale processing session", {
+        sessionId: session.id,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return session;
+    }
+  }
+
+  private hasProcessingExpired(session: SessionRecord): boolean {
+    const now = Date.now();
+    const explicitDeadline = session.processingDeadline?.getTime();
+    const derivedDeadline = session.processingStartedAt
+      ? session.processingStartedAt.getTime() + PROCESSING_TIMEOUT_MS
+      : null;
+    const deadline = explicitDeadline ?? derivedDeadline;
+    if (!deadline) {
+      return false;
+    }
+    return deadline + STALE_PROCESSING_GRACE_MS <= now;
+  }
+
+  private async releaseQuotaHold(userId: string, holdKey: string | null, sessionId: string): Promise<void> {
+    if (!holdKey) {
+      return;
+    }
+    try {
+      await quotaService.releaseHold({ uid: userId, sessionId: holdKey, refund: true });
+      this.logger.step("Released orphaned quota hold", { sessionId, holdKey, userId });
+    } catch (error) {
+      this.logger.warn("Failed to release quota hold", {
+        sessionId,
+        holdKey,
+        userId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private sanitizeMetadataForPersistence(
+    metadata?: Record<string, unknown>,
+  ): Record<string, unknown> | undefined {
+    if (!metadata) {
+      return metadata;
+    }
+    const sanitized = sanitizeForStorage(metadata, { maxStringLength: this.metadataValueLimit });
+    if (sanitized && typeof sanitized === "object") {
+      return sanitized as Record<string, unknown>;
+    }
+    return undefined;
+  }
+
   private createSessionId(userId: string, companyName?: string, jobTitle?: string): string {
     this.logger.step("Creating session id", { userId, companyName, jobTitle });
     const timestamp = new Date().toISOString().replace(/[:T]/g, "-").split(".")[0];
@@ -298,6 +511,43 @@ export class SessionRepository {
     this.logger.data("session-id-composite", composite);
     return composite;
   }
+}
+
+function extractFileKeys(generatedFiles: Record<string, GeneratedFile> | undefined): string[] {
+  if (!generatedFiles) {
+    return [];
+  }
+  return Object.values(generatedFiles)
+    .map((file) => file?.key)
+    .filter((key): key is string => typeof key === "string" && Boolean(key));
+}
+
+function readActiveHoldKey(metadata?: Record<string, unknown>): string | null {
+  if (!metadata || typeof metadata !== "object") {
+    return null;
+  }
+  const value = (metadata as Record<string, unknown>).activeHoldKey;
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function hasGeneratedArtifacts(session: SessionRecord): boolean {
+  const files = session.generatedFiles ?? {};
+  return Object.keys(files).length > 0;
+}
+
+function sanitizePayloadForStorage(
+  payload: Record<string, unknown>,
+  maxStringLength: number,
+): Record<string, unknown> {
+  const sanitized = sanitizeForStorage(payload, { maxStringLength });
+  if (sanitized && typeof sanitized === "object") {
+    return sanitized as Record<string, unknown>;
+  }
+  return {};
 }
 
 /**

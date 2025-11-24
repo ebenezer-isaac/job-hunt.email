@@ -10,10 +10,13 @@ import {
   faCompress,
   faPlus,
   faXmark,
+  faTrash,
 } from "@fortawesome/free-solid-svg-icons";
-import { useMemo } from "react";
+import { useMemo, useState, useRef, type TouchEvent } from "react";
 import { useSessionStore } from "@/store/session-store";
 import { IconDefinition } from "@fortawesome/fontawesome-svg-core";
+import { deleteSessionAction } from "@/app/actions/delete-session";
+import { toast } from "sonner";
 
 type SessionSidebarProps = {
   collapsed: boolean;
@@ -33,7 +36,11 @@ const STATUS_META: Record<string, { label: string; icon: IconDefinition; bg: str
 export function SessionSidebar({ collapsed, onToggleCollapsed, onSessionSelected, mobileOpen, onMobileClose }: SessionSidebarProps) {
   const sessions = useSessionStore((state) => state.sessions);
   const currentSessionId = useSessionStore((state) => state.currentSessionId);
-  const { selectSession, setGeneratedDocuments } = useSessionStore((state) => state.actions);
+  const { selectSession, setGeneratedDocuments, removeSession } = useSessionStore((state) => state.actions);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
+  const [swipeSessionId, setSwipeSessionId] = useState<string | null>(null);
+  const [hoverDeleteSessionId, setHoverDeleteSessionId] = useState<string | null>(null);
+  const touchStartRef = useRef<Record<string, number>>({});
 
   const sortedSessions = useMemo(() => {
     return [...sessions].sort((a, b) => getSessionSortValue(b) - getSessionSortValue(a));
@@ -50,6 +57,56 @@ export function SessionSidebar({ collapsed, onToggleCollapsed, onSessionSelected
     selectSession(sessionId);
     onSessionSelected?.();
     onMobileClose?.();
+  };
+
+  const handleDeleteSession = async (sessionId: string, title: string) => {
+    if (deletingSessionId) {
+      return;
+    }
+    const confirmed = typeof window === "undefined" ? true : window.confirm(`Delete session "${title}"? This cannot be undone.`);
+    if (!confirmed) {
+      return;
+    }
+    setDeletingSessionId(sessionId);
+    try {
+      await deleteSessionAction(sessionId);
+      removeSession(sessionId);
+      if (swipeSessionId === sessionId) {
+        setSwipeSessionId(null);
+      }
+      if (hoverDeleteSessionId === sessionId) {
+        setHoverDeleteSessionId(null);
+      }
+      toast.success("Session deleted");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(`Failed to delete session: ${message}`);
+    } finally {
+      setDeletingSessionId((prev) => (prev === sessionId ? null : prev));
+    }
+  };
+
+  const handleTouchStart = (sessionId: string, event: TouchEvent) => {
+    touchStartRef.current[sessionId] = event.touches[0]?.clientX ?? 0;
+  };
+
+  const handleTouchMove = (sessionId: string, event: TouchEvent) => {
+    const startX = touchStartRef.current[sessionId];
+    if (typeof startX !== "number") {
+      return;
+    }
+    const delta = event.touches[0]?.clientX ?? startX;
+    const diff = delta - startX;
+    if (diff < -30) {
+      setSwipeSessionId(sessionId);
+    }
+    if (diff > 30 && swipeSessionId === sessionId) {
+      setSwipeSessionId(null);
+    }
+  };
+
+  const handleTouchEnd = (sessionId: string) => {
+    delete touchStartRef.current[sessionId];
   };
 
   return (
@@ -112,22 +169,45 @@ export function SessionSidebar({ collapsed, onToggleCollapsed, onSessionSelected
                 }
 
                 return (
-                  <button
+                  <div
                     key={session.id}
-                    type="button"
-                    onClick={() => handleSessionClick(session.id)}
-                    className={`relative flex h-12 w-12 items-center justify-center rounded-full border text-xs font-semibold transition ${
-                      isActive
-                        ? "border-zinc-900 bg-zinc-900 text-white"
-                        : "border-zinc-200 bg-white text-zinc-800 hover:border-zinc-300"
-                    } ${statusClasses}`}
-                    title={`${session.title} • ${formattedTimestamp}`}
+                    className="relative group"
+                    onTouchStart={(event) => handleTouchStart(session.id, event)}
+                    onTouchMove={(event) => handleTouchMove(session.id, event)}
+                    onTouchEnd={() => handleTouchEnd(session.id)}
                   >
-                    {session.status === 'processing' && (
-                      <span className="absolute inset-0 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />
-                    )}
-                    {session.title.slice(0, 2).toUpperCase()}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSessionClick(session.id)}
+                      className={`relative flex h-12 w-12 items-center justify-center rounded-full border text-xs font-semibold transition-transform duration-200 ${
+                        isActive
+                          ? "border-zinc-900 bg-zinc-900 text-white"
+                          : "border-zinc-200 bg-white text-zinc-800 hover:border-zinc-300"
+                      } ${statusClasses} ${
+                        swipeSessionId === session.id ? "-translate-x-6" : "translate-x-0"
+                      } group-hover:-translate-x-6 group-focus-within:-translate-x-6`}
+                      title={`${session.title} • ${formattedTimestamp}`}
+                    >
+                      {session.status === 'processing' && (
+                        <span className="absolute inset-0 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />
+                      )}
+                      {session.title.slice(0, 2).toUpperCase()}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Delete session ${session.title}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void handleDeleteSession(session.id, session.title);
+                      }}
+                      disabled={deletingSessionId === session.id}
+                      className={`absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full border border-red-200 bg-white text-red-600 shadow transition-opacity duration-200 hover:bg-red-50 disabled:opacity-60 group-hover:opacity-100 group-focus-within:opacity-100 ${
+                        swipeSessionId === session.id ? "opacity-100" : "opacity-0"
+                      }`}
+                    >
+                      <FontAwesomeIcon icon={faTrash} className="text-xs" />
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -161,22 +241,70 @@ export function SessionSidebar({ collapsed, onToggleCollapsed, onSessionSelected
                     const timestampIso = getSessionTimestampIso(session);
                     const formattedTimestamp = formatSessionTimestamp(timestampIso);
                     return (
-                      <li key={session.id}>
+                      <li
+                        key={session.id}
+                        className="relative overflow-hidden group"
+                        onTouchStart={(event) => handleTouchStart(session.id, event)}
+                        onTouchMove={(event) => handleTouchMove(session.id, event)}
+                        onTouchEnd={() => handleTouchEnd(session.id)}
+                      >
                         <button
                           type="button"
                           onClick={() => handleSessionClick(session.id)}
-                          className={`w-full rounded-xl border px-4 py-3 text-left transition ${
+                          className={`relative w-full rounded-xl border px-4 py-3 pr-20 text-left transition-colors duration-200 transform ${
                             isActive
                               ? "border-zinc-900 dark:border-zinc-100 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900"
                               : "border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 hover:border-zinc-300 dark:hover:border-zinc-600"
-                          }`}
+                          } ${swipeSessionId === session.id ? "-translate-x-16" : "translate-x-0"}`}
                         >
-                          <div className="flex items-center justify-between text-sm font-semibold">
-                            <span className="truncate">{session.title}</span>
-                            <SessionStatusBadge status={session.status} />
+                          <div className="text-sm font-semibold">
+                            <span className="block truncate">{session.title}</span>
                           </div>
                           <p className={`mt-1 text-xs ${isActive ? "text-zinc-200 dark:text-zinc-700" : "text-zinc-500 dark:text-zinc-400"}`}>{formattedTimestamp}</p>
                         </button>
+                        <div
+                          className="absolute right-4 top-1/2 -translate-y-1/2"
+                          onMouseEnter={() => setHoverDeleteSessionId(session.id)}
+                          onMouseLeave={() => setHoverDeleteSessionId((prev) => (prev === session.id ? null : prev))}
+                          onFocus={() => setHoverDeleteSessionId(session.id)}
+                          onBlur={() => setHoverDeleteSessionId((prev) => (prev === session.id ? null : prev))}
+                        >
+                          {hoverDeleteSessionId === session.id ? (
+                            <button
+                              type="button"
+                              aria-label={`Delete session ${session.title}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void handleDeleteSession(session.id, session.title);
+                              }}
+                              disabled={deletingSessionId === session.id}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-200 bg-white text-red-600 transition hover:bg-red-50 disabled:opacity-60 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300"
+                            >
+                              {deletingSessionId === session.id ? (
+                                <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                              ) : (
+                                <FontAwesomeIcon icon={faTrash} />
+                              )}
+                            </button>
+                          ) : (
+                            <SessionStatusBadge status={session.status} />
+                          )}
+                        </div>
+                        {swipeSessionId === session.id && hoverDeleteSessionId !== session.id ? (
+                          <button
+                            type="button"
+                            aria-label={`Delete session ${session.title}`}
+                            onClick={() => void handleDeleteSession(session.id, session.title)}
+                            disabled={deletingSessionId === session.id}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-200 bg-white text-red-600 transition hover:bg-red-50 disabled:opacity-60 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300"
+                          >
+                            {deletingSessionId === session.id ? (
+                              <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                            ) : (
+                              <FontAwesomeIcon icon={faTrash} />
+                            )}
+                          </button>
+                        ) : null}
                       </li>
                     );
                   })}

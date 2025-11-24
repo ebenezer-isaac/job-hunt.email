@@ -17,6 +17,9 @@ export type SessionStoreState = {
   chatHistory: ChatMessage[];
   isGenerating: boolean;
   generatedDocuments: GenerationArtifacts | null;
+  sessionArtifacts: Record<string, GenerationArtifacts | null>;
+  sessionGenerating: Record<string, boolean>;
+  pendingGlobalGeneration: boolean;
   mode: ChatMode;
   sourceDocuments: {
     originalCV: string;
@@ -36,13 +39,15 @@ export type SessionStoreState = {
     selectSession: (sessionId: string | null) => void;
     setChatHistory: (history: ChatMessage[]) => void;
     appendChatMessage: (sessionId: string, message: ChatMessage) => void;
-    setIsGenerating: (value: boolean) => void;
+    setIsGenerating: (sessionId: string | null, value: boolean) => void;
     setGeneratedDocuments: (sessionId: string | null, artifacts: GenerationArtifacts | null) => void;
     setMode: (mode: ChatMode) => void;
     updateSourceDocument: (docType: keyof SessionStoreState["sourceDocuments"], value: string) => void;
     setSessionStatus: (sessionId: string, status: SessionStatus) => void;
     touchSessionTimestamp: (sessionId: string, timestamp?: string) => void;
     setQuota: (quota: SessionStoreState["quota"]) => void;
+    removeSession: (sessionId: string) => void;
+    upsertSession: (session: ClientSession) => void;
   };
 };
 
@@ -128,16 +133,27 @@ function extractArtifactPreviews(metadata?: Record<string, unknown>): ArtifactPr
     return {};
   }
   const previewsRecord = previewsRaw as Record<string, unknown>;
+  const readPreview = (...keys: string[]): string | undefined => {
+    for (const key of keys) {
+      const candidate = previewsRecord[key];
+      if (typeof candidate !== "string") {
+        continue;
+      }
+      const trimmed = candidate.trim();
+      if (!trimmed || trimmed.startsWith("[REDACTED")) {
+        continue;
+      }
+      return trimmed;
+    }
+    return undefined;
+  };
   return {
-    cv: typeof previewsRecord.cv === "string" ? previewsRecord.cv : undefined,
-    cvChangeSummary:
-      typeof previewsRecord.cvChangeSummary === "string" ? previewsRecord.cvChangeSummary : undefined,
-    coverLetter: typeof previewsRecord.coverLetter === "string" ? previewsRecord.coverLetter : undefined,
-    coldEmail: typeof previewsRecord.coldEmail === "string" ? previewsRecord.coldEmail : undefined,
-    coldEmailSubject:
-      typeof previewsRecord.coldEmailSubject === "string" ? previewsRecord.coldEmailSubject : undefined,
-    coldEmailBody:
-      typeof previewsRecord.coldEmailBody === "string" ? previewsRecord.coldEmailBody : undefined,
+    cv: readPreview("cvPreview", "cv"),
+    cvChangeSummary: readPreview("cvChangeSummary"),
+    coverLetter: readPreview("coverLetterPreview", "coverLetter"),
+    coldEmail: readPreview("coldEmailPreview", "coldEmail"),
+    coldEmailSubject: readPreview("coldEmailSubjectPreview", "coldEmailSubject"),
+    coldEmailBody: readPreview("coldEmailBodyPreview", "coldEmailBody"),
   };
 }
 
@@ -210,13 +226,31 @@ function buildArtifactsFromSession(session?: ClientSession | null): GenerationAr
 }
 
 function createSessionStore(initialState?: InitialSessionState) {
+  const initialSessions = initialState?.sessions ?? [];
+  const initialSessionId = initialState?.currentSessionId ?? initialSessions[0]?.id ?? null;
+  const initialArtifactsMap = initialSessions.reduce<Record<string, GenerationArtifacts | null>>((acc, session) => {
+    acc[session.id] = buildArtifactsFromSession(session);
+    return acc;
+  }, {});
+  const initialArtifacts = initialState?.generatedDocuments ?? (initialSessionId ? initialArtifactsMap[initialSessionId] ?? null : null);
+  const initialGeneratingMap: Record<string, boolean> = {};
+  if (initialSessionId && initialState?.isGenerating) {
+    initialGeneratingMap[initialSessionId] = true;
+  }
+
   return createStore<SessionStoreState>((set, get) => ({
-    sessions: initialState?.sessions ?? [],
-    currentSessionId: initialState?.currentSessionId ?? initialState?.sessions?.[0]?.id ?? null,
-    chatHistory: initialState?.chatHistory ?? initialState?.sessions?.[0]?.chatHistory ?? [],
+    sessions: initialSessions,
+    currentSessionId: initialSessionId,
+    chatHistory:
+      initialState?.chatHistory ??
+      (initialSessionId
+        ? initialSessions.find((session) => session.id === initialSessionId)?.chatHistory ?? []
+        : initialSessions[0]?.chatHistory ?? []),
     isGenerating: initialState?.isGenerating ?? false,
-    generatedDocuments:
-      initialState?.generatedDocuments ?? buildArtifactsFromSession(initialState?.sessions?.[0]) ?? null,
+    generatedDocuments: initialArtifacts ?? null,
+    sessionArtifacts: initialArtifactsMap,
+    sessionGenerating: initialGeneratingMap,
+    pendingGlobalGeneration: false,
     mode: initialState?.mode ?? "standard",
     sourceDocuments: initialState?.sourceDocuments ?? {
       originalCV: "",
@@ -243,12 +277,26 @@ function createSessionStore(initialState?: InitialSessionState) {
           });
           const activeSessionId = state.currentSessionId;
           const activeSession = activeSessionId ? merged.find((item) => item.id === activeSessionId) : null;
-          const artifacts = activeSession ? buildArtifactsFromSession(activeSession) : null;
+          const artifactsBySession = { ...state.sessionArtifacts };
+          const generationBySession = { ...state.sessionGenerating };
+
+          merged.forEach((session) => {
+            artifactsBySession[session.id] = buildArtifactsFromSession(session);
+            const shouldGenerate = session.status === "processing";
+            if (generationBySession[session.id] !== shouldGenerate) {
+              generationBySession[session.id] = shouldGenerate;
+            }
+          });
+
+          const artifacts = activeSessionId ? artifactsBySession[activeSessionId] ?? null : null;
           const nextMode = extractSessionMode(activeSession);
           const nextState: Partial<SessionStoreState> = {
             sessions: merged,
+            sessionArtifacts: artifactsBySession,
+            sessionGenerating: generationBySession,
             generatedDocuments: artifacts ?? state.generatedDocuments,
             chatHistory: activeSession?.chatHistory ?? state.chatHistory,
+            isGenerating: activeSessionId ? Boolean(generationBySession[activeSessionId]) : state.isGenerating,
           };
           if (nextMode && nextMode !== state.mode) {
             persistMode(nextMode);
@@ -258,15 +306,24 @@ function createSessionStore(initialState?: InitialSessionState) {
         });
       },
       selectSession: (sessionId) => {
-        const { sessions } = get();
-        const active = sessions.find((session) => session.id === sessionId) ?? null;
+        const state = get();
+        const active = state.sessions.find((session) => session.id === sessionId) ?? null;
         const sessionMode = active ? extractSessionMode(active) : null;
-        const resolvedMode = sessionMode ?? get().mode;
+        const resolvedMode = sessionMode ?? state.mode;
+        const pendingCarry = state.currentSessionId === null && state.pendingGlobalGeneration;
+        const artifactsFromMap = sessionId ? state.sessionArtifacts[sessionId] : null;
+        const artifacts = artifactsFromMap ?? buildArtifactsFromSession(active);
+        const isGeneratingForSession = sessionId
+          ? state.sessionGenerating[sessionId] ?? (pendingCarry ? state.isGenerating : false)
+          : false;
+
         set({
           currentSessionId: sessionId,
           chatHistory: active?.chatHistory ?? [],
-          generatedDocuments: buildArtifactsFromSession(active),
+          generatedDocuments: artifacts ?? null,
           mode: resolvedMode,
+          isGenerating: isGeneratingForSession,
+          pendingGlobalGeneration: sessionId ? state.pendingGlobalGeneration : false,
         });
         if (sessionMode) {
           persistMode(resolvedMode);
@@ -305,15 +362,34 @@ function createSessionStore(initialState?: InitialSessionState) {
           return { chatHistory: nextChatHistory, sessions };
         });
       },
-      setIsGenerating: (value) => set({ isGenerating: value }),
-      setGeneratedDocuments: (sessionId, artifacts) =>
+      setIsGenerating: (sessionId: string | null, value: boolean) =>
         set((state) => {
-          if (sessionId && sessionId !== state.currentSessionId) {
-            return state;
+          if (!sessionId) {
+            return {
+              isGenerating: value,
+              pendingGlobalGeneration: value,
+            };
           }
-          return { generatedDocuments: artifacts };
+          const sessionGenerating = { ...state.sessionGenerating, [sessionId]: value };
+          const affectsCurrent = state.currentSessionId === sessionId;
+          return {
+            sessionGenerating,
+            isGenerating: affectsCurrent ? value : state.isGenerating,
+            pendingGlobalGeneration: false,
+          };
         }),
-      setMode: (mode) => {
+      setGeneratedDocuments: (sessionId: string | null, artifacts: GenerationArtifacts | null) =>
+        set((state) => {
+          if (!sessionId) {
+            return { generatedDocuments: artifacts };
+          }
+          const artifactsBySession = { ...state.sessionArtifacts, [sessionId]: artifacts };
+          return {
+            sessionArtifacts: artifactsBySession,
+            generatedDocuments: state.currentSessionId === sessionId ? artifacts : state.generatedDocuments,
+          };
+        }),
+      setMode: (mode: ChatMode) => {
         if (typeof window !== "undefined") {
           localStorage.setItem("chatMode", mode);
         }
@@ -327,7 +403,7 @@ function createSessionStore(initialState?: InitialSessionState) {
           },
         }));
       },
-      setSessionStatus: (sessionId, status) =>
+      setSessionStatus: (sessionId: string, status: SessionStatus) =>
         set((state) => {
           const index = state.sessions.findIndex((session) => session.id === sessionId);
           if (index === -1) {
@@ -336,11 +412,15 @@ function createSessionStore(initialState?: InitialSessionState) {
           const updatedSessions = state.sessions.map((session, idx) =>
             idx === index ? { ...session, status } : session,
           );
+          const sessionGenerating = { ...state.sessionGenerating, [sessionId]: status === "processing" };
           return {
             sessions: updatedSessions,
+            sessionGenerating,
+            isGenerating:
+              state.currentSessionId === sessionId ? (status === "processing") : state.isGenerating,
           };
         }),
-      touchSessionTimestamp: (sessionId, timestamp) =>
+      touchSessionTimestamp: (sessionId: string, timestamp?: string) =>
         set((state) => {
           const iso = timestamp ?? new Date().toISOString();
           const updatedSessions = state.sessions.map((session) =>
@@ -357,6 +437,59 @@ function createSessionStore(initialState?: InitialSessionState) {
           return { sessions: updatedSessions };
         }),
       setQuota: (quota) => set({ quota }),
+      removeSession: (sessionId) =>
+        set((state) => {
+          if (!state.sessions.some((session) => session.id === sessionId)) {
+            return state;
+          }
+          const sessions = state.sessions.filter((session) => session.id !== sessionId);
+          const sessionArtifacts = { ...state.sessionArtifacts };
+          delete sessionArtifacts[sessionId];
+          const sessionGenerating = { ...state.sessionGenerating };
+          delete sessionGenerating[sessionId];
+          const updates: Partial<SessionStoreState> = {
+            sessions,
+            sessionArtifacts,
+            sessionGenerating,
+          };
+          if (state.currentSessionId === sessionId) {
+            const nextActive = sessions[0] ?? null;
+            updates.currentSessionId = nextActive?.id ?? null;
+            updates.chatHistory = nextActive?.chatHistory ?? [];
+            updates.generatedDocuments = nextActive ? sessionArtifacts[nextActive.id] ?? null : null;
+            updates.isGenerating = nextActive ? Boolean(sessionGenerating[nextActive.id]) : false;
+          }
+          return updates;
+        }),
+      upsertSession: (session) =>
+        set((state) => {
+          const artifacts = buildArtifactsFromSession(session);
+          const list = state.sessions.slice();
+          const existingIndex = list.findIndex((entry) => entry.id === session.id);
+          if (existingIndex >= 0) {
+            list[existingIndex] = session;
+          } else {
+            list.unshift(session);
+          }
+          list.sort((a, b) => sessionSortValue(b) - sessionSortValue(a));
+
+          const sessionArtifacts = { ...state.sessionArtifacts, [session.id]: artifacts };
+          const sessionGenerating = {
+            ...state.sessionGenerating,
+            [session.id]: session.status === "processing",
+          };
+          const updates: Partial<SessionStoreState> = {
+            sessions: list,
+            sessionArtifacts,
+            sessionGenerating,
+          };
+          if (state.currentSessionId === session.id) {
+            updates.chatHistory = session.chatHistory;
+            updates.generatedDocuments = artifacts ?? null;
+            updates.isGenerating = session.status === "processing";
+          }
+          return updates;
+        }),
     },
   }));
 }
@@ -409,6 +542,18 @@ function mergeContent(existing: string, addition: string): string {
 }
 
 const SessionStoreContext = createContext<SessionStore | null>(null);
+
+function sessionSortValue(session: { metadata?: Record<string, unknown>; createdAt: string }) {
+  const candidate = session.metadata?.lastGeneratedAt;
+  if (typeof candidate === "string" && candidate.trim()) {
+    const value = Date.parse(candidate);
+    if (!Number.isNaN(value)) {
+      return value;
+    }
+  }
+  const fallback = Date.parse(session.createdAt);
+  return Number.isNaN(fallback) ? 0 : fallback;
+}
 
 export function SessionStoreProvider({ children, initialState }: { children: ReactNode; initialState?: InitialSessionState }) {
   const storeRef = useRef<SessionStore | null>(null);

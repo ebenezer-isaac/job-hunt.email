@@ -10,8 +10,8 @@ googleProvider.setCustomParameters({ prompt: "select_account" });
 export function useGoogleLogin() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectParam = searchParams.get(LOGIN_REDIRECT_PARAM_KEY);
-  const loginStatus = searchParams.get(LOGIN_STATUS_PARAM_KEY);
+  const redirectParam = searchParams?.get(LOGIN_REDIRECT_PARAM_KEY);
+  const loginStatus = searchParams?.get(LOGIN_STATUS_PARAM_KEY);
   const redirectPath = redirectParam && redirectParam.startsWith("/") ? redirectParam : "/";
   
   const [isSubmitting, setIsSubmitting] = useState(false);

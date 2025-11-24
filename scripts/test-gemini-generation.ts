@@ -24,19 +24,20 @@ async function testGeneration() {
 
   console.log("\n--- Attempt 1: With thinking_level = 'high' ---");
   try {
-    // @ts-ignore
-    const result = await model.generateContent({
+    const experimentalThinkingConfig = {
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       generationConfig: {
-        // @ts-ignore
-        thinking_level: "high", 
+        thinking_level: "high",
       },
-    });
+    } as Parameters<typeof model.generateContent>[0];
+
+    const result = await model.generateContent(experimentalThinkingConfig);
     const response = await result.response;
     console.log("Success! Response length:", response.text().length);
     console.log("Snippet:", response.text().substring(0, 100));
-  } catch (error: any) {
-    console.error("Failed:", error.message);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Failed:", message);
   }
 
   console.log("\n--- Attempt 2: Without thinking_level ---");
@@ -47,26 +48,28 @@ async function testGeneration() {
     const response = await result.response;
     console.log("Success! Response length:", response.text().length);
     console.log("Snippet:", response.text().substring(0, 100));
-  } catch (error: any) {
-    console.error("Failed:", error.message);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Failed:", message);
   }
   
   console.log("\n--- Attempt 3: With thinkingConfig (Alternative API) ---");
   try {
     // Some versions use thinkingConfig object
-    // @ts-ignore
-    const result = await model.generateContent({
+    const experimentalThinkingConfig = {
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      // @ts-ignore
       thinkingConfig: {
-          includeThoughts: true
-      }
-    });
+        includeThoughts: true,
+      },
+    } as Parameters<typeof model.generateContent>[0];
+
+    const result = await model.generateContent(experimentalThinkingConfig);
     const response = await result.response;
     console.log("Success! Response length:", response.text().length);
     console.log("Snippet:", response.text().substring(0, 100));
-  } catch (error: any) {
-    console.error("Failed:", error.message);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Failed:", message);
   }
 }
 

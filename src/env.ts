@@ -52,6 +52,7 @@ const serverSchema = z.object({
     .optional()
     .transform((value) => value?.trim() ?? ""),
   GEMINI_PRO_MODEL: z.string().default("gemini-3-pro-preview"),
+  GEMINI_PRO_FALLBACK_MODEL: z.string().default("gemini-2.5-pro"),
   GEMINI_FLASH_MODEL: z.string().default("gemini-2.5-flash"),
   GEMINI_EMBED_MODEL: z.string().default("text-embedding-004"),
   AI_MAX_RETRIES: z.coerce.number().int().min(1).default(5),

@@ -119,11 +119,9 @@ function WebAppGuide() {
             Paste a comprehensive text version of your complete work history, skills, projects, and achievements. Include everything—the AI will pick relevant parts for each application.
           </p>
         </Step>
-        <Step number={4} title="Customize Strategies (Optional)">
-          <p>
-            You can define custom strategies for CV formatting, cover letter tone, and cold email style. Or use the defaults provided.
-          </p>
-        </Step>
+        <p className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-zinc-600 dark:border-blue-900/40 dark:bg-blue-900/10 dark:text-zinc-300">
+          Strategy presets for CVs, cover letters, and outreach are managed globally. You can review the templates under Settings, but they are currently read-only and shared across all users.
+        </p>
       </Section>
 
       <Section title="3. Creating Job Applications" icon="📄">
@@ -264,6 +262,9 @@ function LocalGuide() {
           <CodeBlock>docker build -t job-hunt-app .</CodeBlock>
           <p className="mt-2 mb-2">Run the container:</p>
           <CodeBlock>docker run -p 8080:8080 --env-file .env.local job-hunt-app</CodeBlock>
+          <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+            The first port (host) can be changed if 8080 is taken, e.g., <code className="rounded bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 font-mono text-xs">-p 8081:8080</code>.
+          </p>
           <p className="mt-2">Open <a href="http://localhost:8080" target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">http://localhost:8080</a> in your browser.</p>
         </Step>
       </Section>
@@ -279,8 +280,8 @@ function LocalGuide() {
             solution="Double-check your Firebase configuration in .env.local. Ensure you've enabled Google sign-in in the Firebase console." 
           />
           <Issue 
-            problem="Port 3000 already in use" 
-            solution="Kill the process using port 3000 or specify a different port: 'PORT=3001 npm run dev'" 
+            problem="Port already in use" 
+            solution="For the dev server, free port 3000 or run 'PORT=3001 npm run dev'. For Docker, change the host binding (e.g., 'docker run -p 8081:8080 ...')." 
           />
           <Issue 
             problem="Gemini API quota exceeded" 
@@ -291,9 +292,9 @@ function LocalGuide() {
 
       <Section title="Additional Resources" icon="📚">
         <div className="space-y-4">
-          <ResourceCard title="Full README" href="#" description="Complete technical documentation with detailed setup instructions" />
-          <ResourceCard title="GitHub Issues" href="#" description="Report bugs or request features" />
-          <ResourceCard title="Contributing Guide" href="#" description="Learn how to contribute to the project" />
+          <ResourceCard title="Full README" href="https://github.com/ebenezer-isaac/job-hunt.email/blob/main/README.md" description="Complete technical documentation with detailed setup instructions" />
+          <ResourceCard title="GitHub Issues" href="https://github.com/ebenezer-isaac/job-hunt.email/issues" description="Report bugs or request features" />
+          <ResourceCard title="Contributing Guide" href="https://github.com/ebenezer-isaac/job-hunt.email#contributing" description="Learn how to contribute to the project" />
         </div>
       </Section>
     </div>
