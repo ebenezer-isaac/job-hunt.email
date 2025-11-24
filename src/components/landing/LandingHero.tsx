@@ -4,19 +4,18 @@ import Link from "next/link";
 
 export function LandingHero() {
   return (
-    <div className="max-w-2xl">
-      <h1 className="text-5xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100 mb-4">
-        Stop manually tweaking your CV.
-        <span className="block text-zinc-600 dark:text-zinc-400 mt-1">Let AI do it.</span>
+    <div className="max-w-2xl pt-10">
+      <h1 className="text-5xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100 mb-2">
+        Stop manually editing CVs.
+        <span className="block text-zinc-600 dark:text-zinc-400 mt-0.5">Let AI do it.</span>
       </h1>
 
-      <p className="text-xl text-zinc-600 dark:text-zinc-400 mb-6 leading-relaxed">
-        Job Hunt Assistant is an AI-powered tool that helps you land your dream job by
-        automatically tailoring your CV, writing compelling cover letters, and drafting
+      <p className="text-xl text-zinc-600 dark:text-zinc-400 mb-4 leading-relaxed">
+        Land your dream job by automatically tailoring your CV, writing compelling cover letters, and drafting
         personalized cold emails for every application.
       </p>
 
-      <div className="space-y-4 mb-6">
+      <div className="space-y-3 mb-4">
         <Feature
           icon="🕵️"
           title="Deep Research Agents"
@@ -39,7 +38,7 @@ export function LandingHero() {
         />
       </div>
 
-      <div className="flex flex-wrap gap-4 items-center">
+      <div className="flex flex-wrap gap-3 items-center">
         <Link
           href="/guide"
           className="inline-flex items-center gap-2 rounded-full bg-zinc-900 dark:bg-zinc-100 px-6 py-3 text-sm font-semibold text-white dark:text-zinc-900 shadow-lg hover:bg-zinc-800 dark:hover:bg-zinc-200 transition"
@@ -62,8 +61,8 @@ export function LandingHero() {
         </a>
       </div>
 
-      <div className="mt-4 pt-4 border-t border-zinc-200 dark:border-zinc-700">
-        <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-zinc-100 dark:bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+      <div className="mt-2 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+        <div className="mb-1.5 inline-flex items-center gap-2 rounded-full bg-zinc-100 dark:bg-zinc-800 px-3.5 py-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
           <span className="relative flex h-2 w-2">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
             <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500"></span>
@@ -86,7 +85,7 @@ interface FeatureProps {
 
 function Feature({ icon, title, description }: FeatureProps) {
   return (
-    <div className="flex items-start gap-4">
+    <div className="flex items-start gap-3">
       <div className="text-3xl flex-shrink-0">{icon}</div>
       <div>
         <h3 className="font-semibold text-zinc-900 dark:text-zinc-100 mb-1">{title}</h3>
