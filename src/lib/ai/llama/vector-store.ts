@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import { Document, VectorStoreIndex } from "llamaindex";
@@ -15,6 +16,7 @@ const persistDir = path.isAbsolute(env.LLAMAINDEX_PERSIST_DIR)
   : path.join(process.cwd(), env.LLAMAINDEX_PERSIST_DIR);
 let persistenceHealthy = true;
 let persistenceDisableReason: string | null = null;
+let persistDirReady: Promise<void> | null = null;
 
 export class PersistenceUnavailableError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
@@ -35,6 +37,31 @@ function toErrorMessage(error: unknown): string {
 
 function isEmptyIndexError(error: unknown): boolean {
   return toErrorMessage(error).includes("Cannot initialize VectorStoreIndex without nodes or indexStruct");
+}
+
+function isMissingPersistFileError(error: unknown): boolean {
+  const message = toErrorMessage(error);
+  if (message.includes("Failed to load data from path")) {
+    return true;
+  }
+  const cause = (error as { cause?: unknown } | undefined)?.cause;
+  if (cause && typeof cause === "object" && "code" in cause) {
+    return String((cause as { code?: unknown }).code).toUpperCase() === "ENOENT";
+  }
+  return false;
+}
+
+async function ensurePersistDirectory(): Promise<void> {
+  if (!persistDirReady) {
+    persistDirReady = fs
+      .mkdir(persistDir, { recursive: true })
+      .then(() => undefined)
+      .catch((error) => {
+        persistDirReady = null;
+        throw error;
+      });
+  }
+  await persistDirReady;
 }
 
 function disablePersistence(error: unknown, context: string) {
@@ -81,12 +108,18 @@ let indexPromise: Promise<VectorStoreIndex> | null = null;
 
 async function buildPersistentIndex(): Promise<VectorStoreIndex> {
   ensureLlamaRuntime();
+  await ensurePersistDirectory();
   const storageContext = await storageContextFromDefaults({ persistDir });
   try {
     return await VectorStoreIndex.init({ storageContext });
   } catch (error) {
-    if (isEmptyIndexError(error)) {
-      logger.step("vector-index-bootstrap", { persistDir });
+    if (isEmptyIndexError(error) || isMissingPersistFileError(error)) {
+      logger.step("vector-index-bootstrap", {
+        persistDir,
+        reason: isMissingPersistFileError(error) ? "missing-persist-artifacts" : "empty-index",
+      });
+      // Important: keep this bootstrap path intact. Fresh checkouts often remove vector_store.json,
+      // and without this guard major refactors repeatedly disable persistence.
       return bootstrapPersistentIndex(storageContext);
     }
     throw error;

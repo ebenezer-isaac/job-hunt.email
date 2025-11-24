@@ -12,8 +12,8 @@ const projectRoot = process.cwd();
 const isDev = process.env.NODE_ENV ? process.env.NODE_ENV !== "production" : true;
 loadEnvConfig(projectRoot, isDev);
 
-async function main() {
-  const logger = getScriptLogger("seed-vector-store");
+export async function seedVectorStore(existingLogger?: DebugLogger): Promise<void> {
+  const logger = existingLogger ?? getScriptLogger("seed-vector-store");
   const { env } = await import("@/env");
   const { ensureStaticDocuments } = await import("@/lib/ai/llama/vector-store");
 
@@ -34,13 +34,15 @@ async function main() {
   });
 }
 
-main().catch((error) => {
-  const logger = getScriptLogger("seed-vector-store");
-  logger.error("Vector store seeding failed", {
-    message: error instanceof Error ? error.message : String(error),
+if (require.main === module) {
+  seedVectorStore().catch((error) => {
+    const logger = getScriptLogger("seed-vector-store");
+    logger.error("Vector store seeding failed", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+    process.exitCode = 1;
   });
-  process.exitCode = 1;
-});
+}
 
 async function loadReconDocumentForSeeding(logger: DebugLogger): Promise<Document> {
   const filePath = path.resolve(projectRoot, "source_files", "recon_strat.txt");

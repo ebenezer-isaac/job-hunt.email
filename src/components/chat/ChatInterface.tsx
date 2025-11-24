@@ -28,6 +28,28 @@ export function ChatInterface() {
   const lastPayloadRef = useRef<ChatInput | null>(null);
   const lastSessionIdRef = useRef<string | null>(null);
   const preserveFormRef = useRef(false);
+  const nullSessionInitializedRef = useRef(false);
+
+  const extractJobDescriptionFromSession = (session: ClientSession | null): string => {
+    if (!session) {
+      return "";
+    }
+    for (let index = session.chatHistory.length - 1; index >= 0; index -= 1) {
+      const entry = session.chatHistory[index];
+      const kind = entry.metadata?.kind;
+      const isPrompt = kind === "prompt";
+      const isUser = entry.role === "user";
+      const rawJobInput = typeof entry.metadata?.rawJobInput === "string" ? entry.metadata.rawJobInput : "";
+      const preferredContent = rawJobInput.trim() ? rawJobInput : entry.content;
+      if (isPrompt && isUser) {
+        return preferredContent;
+      }
+      if (!kind && isUser) {
+        return preferredContent;
+      }
+    }
+    return "";
+  };
 
   const applyResultPayload = (result: ChatResult) => {
     setCompanyName(result.companyName);
@@ -73,6 +95,7 @@ export function ChatInterface() {
         setContactName("");
         setContactTitle("");
         setContactEmail("");
+        setJobDescription("");
         setHasGeneratedInSession(false);
       } else {
         const metadata = (session.metadata ?? {}) as Record<string, unknown>;
@@ -94,6 +117,7 @@ export function ChatInterface() {
         setContactName(preferContactValue("contactName", "targetPersonName"));
         setContactTitle(preferContactValue("contactTitle", "targetPersonTitle"));
         setContactEmail(preferContactValue("contactEmail", "targetPersonEmail"));
+        setJobDescription(extractJobDescriptionFromSession(session));
         setHasGeneratedInSession(Boolean(session.metadata?.lastGeneratedAt));
       }
       if (options.resetRetry) {
@@ -112,13 +136,17 @@ export function ChatInterface() {
       lastSessionIdRef.current = null;
       if (preserveFormRef.current) {
         preserveFormRef.current = false;
+        nullSessionInitializedRef.current = true;
         return;
       }
-      if (!isFormDirty) {
+      if (!nullSessionInitializedRef.current) {
         applySessionState(null, { resetRetry: true, resetDirty: true });
+        nullSessionInitializedRef.current = true;
       }
       return;
     }
+
+    nullSessionInitializedRef.current = false;
 
     const session = sessions.find((item) => item.id === currentSessionId) ?? null;
     if (!session) {

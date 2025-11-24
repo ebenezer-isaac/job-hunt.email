@@ -21,6 +21,41 @@ import {
   SearchResponse,
 } from "./apollo/types";
 
+const PLACEHOLDER_EMAILS = new Set([
+  "email_not_unlocked@domain.com",
+  "no_email@apollo.io",
+]);
+
+function normalizeDomainValue(value?: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) {
+    return null;
+  }
+  return trimmed
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/\/.*$/, "")
+    .trim() || null;
+}
+
+function extractEmailDomain(email?: string | null): string | null {
+  if (!email || !email.includes("@")) {
+    return null;
+  }
+  return email.split("@")[1] ?? null;
+}
+
+function isPlaceholderEmail(email?: string | null): boolean {
+  if (!email) {
+    return false;
+  }
+  const normalized = email.trim().toLowerCase();
+  return PLACEHOLDER_EMAILS.has(normalized);
+}
+
 
 
 export class ApolloService {
@@ -180,11 +215,26 @@ export class ApolloService {
       id: candidate.id,
       name: candidate.name,
       title: candidate.title,
-      email: candidate.email,
+      email: this.sanitizeEmail(candidate.email),
       emailStatus: (candidate.emailStatus ?? candidate.email_status) as EmailStatus | undefined,
       seniority: candidate.seniority,
       linkedinUrl: candidate.linkedinUrl ?? candidate.linkedin_url,
     };
+  }
+
+  private sanitizeEmail(email?: string | null): string | undefined {
+    if (!email) {
+      return undefined;
+    }
+    const trimmed = email.trim();
+    if (!trimmed || isPlaceholderEmail(trimmed)) {
+      return undefined;
+    }
+    return trimmed;
+  }
+
+  private hasUsableEmail(candidate: ApolloCandidate): boolean {
+    return Boolean(this.sanitizeEmail(candidate.email));
   }
 
   private async collectCandidates(
@@ -203,11 +253,11 @@ export class ApolloService {
         method: "POST",
         body: JSON.stringify(payload),
       }, this.timeout);
-      const candidates = [...(response.people ?? []), ...(response.contacts ?? [])];
-      if (!candidates.length) {
+      const rawCandidates = [...(response.people ?? []), ...(response.contacts ?? [])];
+      if (!rawCandidates.length) {
         break;
       }
-      aggregated.push(...candidates);
+      aggregated.push(...this.filterCandidatesByDomain(rawCandidates, params.companyDomain));
     }
     return aggregated;
   }
@@ -229,13 +279,42 @@ export class ApolloService {
         method: "POST",
         body: JSON.stringify(payload),
       }, this.timeout);
-      const candidates = [...(response.people ?? []), ...(response.contacts ?? [])];
-      if (!candidates.length) {
+      const rawCandidates = [...(response.people ?? []), ...(response.contacts ?? [])];
+      if (!rawCandidates.length) {
         break;
       }
-      aggregated.push(...candidates);
+      aggregated.push(...this.filterCandidatesByDomain(rawCandidates, params.companyDomain));
     }
     return aggregated;
+  }
+
+  private filterCandidatesByDomain(candidates: ApolloCandidate[], companyDomain: string): ApolloCandidate[] {
+    const normalizedTarget = normalizeDomainValue(companyDomain);
+    if (!normalizedTarget) {
+      return candidates;
+    }
+    return candidates.filter((candidate) => {
+      const candidateOrgDomain = normalizeDomainValue(candidate.organization?.domain);
+      if (
+        candidateOrgDomain &&
+        candidateOrgDomain !== normalizedTarget &&
+        !candidateOrgDomain.endsWith(`.${normalizedTarget}`)
+      ) {
+        return false;
+      }
+      const sanitizedEmail = this.sanitizeEmail(candidate.email);
+      if (sanitizedEmail) {
+        const candidateEmailDomain = normalizeDomainValue(extractEmailDomain(sanitizedEmail));
+        if (
+          candidateEmailDomain &&
+          candidateEmailDomain !== normalizedTarget &&
+          !candidateEmailDomain.endsWith(`.${normalizedTarget}`)
+        ) {
+          return false;
+        }
+      }
+      return true;
+    });
   }
 
 
@@ -244,7 +323,7 @@ export class ApolloService {
     candidate: ApolloCandidate,
     log: (message: string, level?: LogLevel) => void,
   ): Promise<ApolloCandidate | null> {
-    if (candidate.email && candidate.email !== "email_not_unlocked@domain.com") {
+    if (this.hasUsableEmail(candidate)) {
       return candidate;
     }
 

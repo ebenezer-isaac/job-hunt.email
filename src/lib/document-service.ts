@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { spawn } from "node:child_process";
 import os from "node:os";
@@ -134,16 +135,9 @@ export class DocumentService {
           attempt,
           error: lastError?.message,
           stack: lastError?.stack,
-          texSourcePreview: texSource.slice(0, 1000)
+          texLength: texSource.length,
+          texFingerprint: this.computeContentFingerprint(texSource),
         });
-        
-        try {
-            const failedTexPath = path.join(os.tmpdir(), `failed-cv-${Date.now()}.tex`);
-            await fs.writeFile(failedTexPath, texSource, "utf-8");
-            this.logger.error("Saved failed LaTeX source", { path: failedTexPath });
-        } catch (e) {
-            this.logger.error("Failed to save failed LaTeX source", { error: (e as Error).message });
-        }
       }
     }
 
@@ -257,24 +251,25 @@ export class DocumentService {
           this.logger.step("pdflatex pass succeeded", { pass });
           resolve();
         } else {
-          const stderr = Buffer.concat(stderrChunks).toString("utf-8");
-          const stdout = Buffer.concat(stdoutChunks).toString("utf-8");
-          
-          let logContent = "";
-          try {
-             logContent = await fs.readFile(path.join(cwd, "main.log"), "utf-8");
-          } catch (e) {
-             logContent = "Could not read main.log";
-          }
+          const stderrBuffer = Buffer.concat(stderrChunks);
+          const stdoutBuffer = Buffer.concat(stdoutChunks);
+          const logPath = path.join(cwd, "main.log");
+          const logContent = await this.safeReadFile(logPath);
+          const lineNumbers = logContent ? this.extractLatexErrorLines(logContent) : [];
 
           this.logger.error("pdflatex pass failed", {
             pass,
             code,
-            stderr,
-            stdout: stdout.slice(-1000),
-            logContent: logContent.slice(-2000)
+            stderrBytes: stderrBuffer.length,
+            stdoutBytes: stdoutBuffer.length,
+            stderrFingerprint: this.computeContentFingerprint(stderrBuffer),
+            stdoutFingerprint: this.computeContentFingerprint(stdoutBuffer),
+            logBytes: logContent?.length ?? 0,
+            logFingerprint: logContent ? this.computeContentFingerprint(logContent) : null,
+            errorLineNumbers: lineNumbers,
           });
-          reject(new Error(`pdflatex exited with code ${code}. Log: ${logContent.slice(-1000)}`));
+
+          reject(new Error(this.buildLatexFailureMessage(code, lineNumbers)));
         }
       });
     });
@@ -297,5 +292,48 @@ export class DocumentService {
       return data.info.Pages;
     }
     throw new Error("Unable to determine PDF page count");
+  }
+
+  private computeContentFingerprint(input: string | Buffer | null | undefined): string | null {
+    if (input == null) {
+      return null;
+    }
+    const normalized = typeof input === "string" ? Buffer.from(input, "utf-8") : input;
+    if (!normalized.length) {
+      return null;
+    }
+    return createHash("sha256").update(normalized).digest("hex");
+  }
+
+  private async safeReadFile(filePath: string): Promise<string | null> {
+    try {
+      const content = await fs.readFile(filePath, "utf-8");
+      return content;
+    } catch {
+      return null;
+    }
+  }
+
+  private extractLatexErrorLines(logContent: string, max = 5): number[] {
+    const matches = logContent.matchAll(/l\.(\d+)/g);
+    const seen = new Set<number>();
+    for (const match of matches) {
+      const value = Number(match[1]);
+      if (!Number.isNaN(value) && !seen.has(value)) {
+        seen.add(value);
+        if (seen.size >= max) {
+          break;
+        }
+      }
+    }
+    return Array.from(seen.values());
+  }
+
+  private buildLatexFailureMessage(code: number | null, lineNumbers: number[]): string {
+    const base = `pdflatex exited with code ${code ?? "unknown"}`;
+    if (!lineNumbers.length) {
+      return base;
+    }
+    return `${base}. Check LaTeX content near lines ${lineNumbers.join(", ")}`;
   }
 }

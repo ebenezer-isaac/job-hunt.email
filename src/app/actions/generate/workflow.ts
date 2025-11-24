@@ -35,6 +35,19 @@ function assertNotAborted(signal?: AbortSignal) {
   }
 }
 
+function describeCvCompilationError(error: unknown): string {
+  const rawMessage = error instanceof Error ? error.message : String(error);
+  const pageMatch = rawMessage.match(/PDF has (\d+) page/);
+  if (pageMatch) {
+    const pages = Number(pageMatch[1]);
+    return `CV PDF still has ${pages} page(s) instead of the target 2-page format. Tweaking the content and retrying usually fixes this.`;
+  }
+  if (rawMessage.toLowerCase().includes("pdflatex")) {
+    return "CV PDF compilation failed due to a LaTeX formatting error. Please try again in a minute.";
+  }
+  return `CV PDF compilation failed: ${rawMessage}`;
+}
+
 export async function runGenerationWorkflow({ parsed, userId, emit, signal }: WorkflowParams): Promise<WorkflowResult> {
   const parsedEmails = parsed.emailAddresses
     .split(",")
@@ -133,7 +146,13 @@ export async function runGenerationWorkflow({ parsed, userId, emit, signal }: Wo
     jobTitle: parsed.jobTitle,
     researchBrief: researchBrief ?? undefined,
   });
-  const cvPersistence = await persistCvArtifact(cvResponse, parsed, userId);
+  let cvPersistence;
+  try {
+    cvPersistence = await persistCvArtifact(cvResponse, parsed, userId);
+  } catch (compileError) {
+    await emit(describeCvCompilationError(compileError));
+    throw compileError;
+  }
   await emit("CV PDF compiled successfully.");
 
   try {

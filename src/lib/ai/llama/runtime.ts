@@ -16,7 +16,11 @@ class GeminiCustom extends Gemini {
   get metadata() {
     try {
       return super.metadata;
-    } catch (e) {
+    } catch (error) {
+      logger.warn("llama-runtime-metadata-fallback", {
+        model: this.model,
+        reason: error instanceof Error ? error.message : String(error),
+      });
       // Fallback for unknown models
       return {
         model: this.model,
@@ -37,6 +41,7 @@ let initialized = false;
 
 const GEMINI_MODEL_VALUES = Object.values(GEMINI_MODEL) as string[];
 const GEMINI_EMBED_MODEL_VALUES = Object.values(GEMINI_EMBEDDING_MODEL) as string[];
+const GEMINI_OVERLOAD_FALLBACK_THRESHOLD = 1;
 
 function resolveEnumValue<T extends string>(
   value: string | undefined,
@@ -88,6 +93,137 @@ function createLlamaCallbackManager(): CallbackManager | null {
   return callbackManager;
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function normalizeErrorMessage(error: unknown): string {
+  if (typeof error === "string") {
+    return error.toLowerCase();
+  }
+  if (error instanceof Error) {
+    return (error.message ?? "").toLowerCase();
+  }
+  return String(error ?? "").toLowerCase();
+}
+
+function isRetryableError(error: unknown): boolean {
+  const message = normalizeErrorMessage(error);
+  return (
+    message.includes("503") ||
+    message.includes("429") ||
+    message.includes("resource_exhausted") ||
+    message.includes("deadline exceeded") ||
+    message.includes("timeout") ||
+    (message.includes("400") && message.includes("model is overloaded"))
+  );
+}
+
+function isServiceUnavailableError(error: unknown): boolean {
+  const message = normalizeErrorMessage(error);
+  return message.includes("503") || message.includes("service unavailable");
+}
+
+function wrapGeminiWithFallback(llmInstance: GeminiCustom, fallbackModel: GEMINI_MODEL): GeminiCustom {
+  if (!fallbackModel || fallbackModel === llmInstance.model) {
+    return llmInstance;
+  }
+
+  const fallbackInstance = new GeminiCustom({
+    apiKey: env.GEMINI_API_KEY,
+    model: fallbackModel,
+    temperature: llmInstance.temperature,
+    topP: llmInstance.topP,
+    maxTokens: llmInstance.maxTokens,
+    safetySettings: llmInstance.safetySettings,
+  });
+
+  const maxRetries = env.AI_MAX_RETRIES;
+  const initialRetryDelay = env.AI_INITIAL_RETRY_DELAY;
+
+  const executeWithFallback = async <T>(
+    operationName: string,
+    executor: (useFallback: boolean) => Promise<T>,
+  ): Promise<T> => {
+    let attempt = 1;
+    let overloadCount = 0;
+    let useFallback = false;
+
+    while (attempt <= maxRetries) {
+      try {
+        const transport = useFallback ? "fallback" : "primary";
+        logger.step(`llama-${operationName}-start`, {
+          attempt,
+          transport,
+          model: useFallback ? fallbackInstance.model : llmInstance.model,
+        });
+        return await executor(useFallback);
+      } catch (error) {
+        const transport = useFallback ? "fallback" : "primary";
+        logger.error(`llama-${operationName}-failed`, {
+          attempt,
+          transport,
+          model: useFallback ? fallbackInstance.model : llmInstance.model,
+          error: error instanceof Error ? error.message : String(error),
+        });
+
+        if (!useFallback && isServiceUnavailableError(error)) {
+          overloadCount += 1;
+          logger.warn("llama-gemini-overload", {
+            attempt,
+            overloadCount,
+            threshold: GEMINI_OVERLOAD_FALLBACK_THRESHOLD,
+          });
+          if (overloadCount >= GEMINI_OVERLOAD_FALLBACK_THRESHOLD) {
+            useFallback = true;
+            logger.warn("llama-switching-gemini-fallback", {
+              attempt,
+              primaryModel: llmInstance.model,
+              fallbackModel: fallbackInstance.model,
+            });
+            continue;
+          }
+        }
+
+        if (isRetryableError(error) && attempt < maxRetries) {
+          logger.warn("llama-gemini-retrying", {
+            attempt,
+            delay: initialRetryDelay,
+            transport,
+          });
+          await sleep(initialRetryDelay);
+          attempt += 1;
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    throw new Error("Gemini runtime exhausted retries");
+  };
+
+  const wrapMethod = (methodName: "chat" | "complete") => {
+    const primaryMethod = (llmInstance[methodName] as (...args: unknown[]) => Promise<unknown>).bind(llmInstance);
+    const fallbackMethod = (fallbackInstance[methodName] as (...args: unknown[]) => Promise<unknown>).bind(
+      fallbackInstance,
+    );
+
+    const wrappedMethod = (...args: unknown[]) =>
+      executeWithFallback(methodName, (useFallback) =>
+        (useFallback ? fallbackMethod : primaryMethod)(...args),
+      );
+
+    // Reflect avoids fighting TypeScript's overload signatures while swapping the runtime method.
+    Reflect.set(llmInstance, methodName, wrappedMethod);
+  };
+
+  wrapMethod("chat");
+  wrapMethod("complete");
+
+  return llmInstance;
+}
+
 export function ensureLlamaRuntime() {
   if (initialized && llm && embedModel) {
     return { llm, embedModel };
@@ -98,6 +234,13 @@ export function ensureLlamaRuntime() {
     GEMINI_MODEL_VALUES,
     GEMINI_MODEL.GEMINI_2_5_PRO_LATEST,
     "GEMINI_PRO_MODEL",
+  );
+
+  const selectedFallbackModel = resolveEnumValue(
+    env.GEMINI_PRO_FALLBACK_MODEL,
+    GEMINI_MODEL_VALUES,
+    selectedGeminiModel,
+    "GEMINI_PRO_FALLBACK_MODEL",
   );
 
   const selectedGeminiEmbedModel = resolveEnumValue(
@@ -112,6 +255,10 @@ export function ensureLlamaRuntime() {
     model: selectedGeminiModel,
     temperature: 0.2,
   });
+
+  if (selectedFallbackModel && selectedFallbackModel !== selectedGeminiModel) {
+    llm = wrapGeminiWithFallback(llm as GeminiCustom, selectedFallbackModel);
+  }
 
   embedModel = new GeminiEmbedding({
     apiKey: env.GEMINI_API_KEY,

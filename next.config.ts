@@ -1,16 +1,18 @@
 import type { NextConfig } from "next";
 import { validateEnv } from "./src/env";
-import { createDebugLogger } from "./src/lib/debug-logger";
 
-const configLogger = createDebugLogger("next-config");
-configLogger.step("Loading Next.js config now");
+if (process.env.NODE_ENV !== "production") {
+  console.info("[next-config] Loading Next.js config now");
+}
 const validatedEnv = validateEnv();
-configLogger.data("validated-env", {
-  NODE_ENV: validatedEnv.NODE_ENV,
-  PORT: validatedEnv.PORT,
-  FIREBASE_PROJECT_ID: validatedEnv.FIREBASE_PROJECT_ID,
-  NEXT_PUBLIC_FIREBASE_PROJECT_ID: validatedEnv.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-});
+if (process.env.NODE_ENV !== "production") {
+  console.info("[next-config] validated-env", {
+    NODE_ENV: validatedEnv.NODE_ENV,
+    PORT: validatedEnv.PORT,
+    FIREBASE_PROJECT_ID: validatedEnv.FIREBASE_PROJECT_ID,
+    NEXT_PUBLIC_FIREBASE_PROJECT_ID: validatedEnv.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  });
+}
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["pino", "pino-pretty", "node-latex"],
@@ -47,6 +49,8 @@ const nextConfig: NextConfig = {
   },
 };
 
-configLogger.data("next-config", nextConfig);
+if (process.env.NODE_ENV !== "production") {
+  console.info("[next-config] resolved config", nextConfig);
+}
 
 export default nextConfig;

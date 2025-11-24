@@ -10,6 +10,7 @@ export type AppendLogParams = {
   message: string;
   level: "info" | "success" | "error";
   kind: ChatMessageKind;
+  payload?: Record<string, unknown>;
 };
 
 export async function appendLogAction(params: AppendLogParams) {
@@ -22,7 +23,7 @@ export async function appendLogAction(params: AppendLogParams) {
       id: params.id,
       level: params.level,
       message: params.message,
-      payload: { kind: params.kind },
+      payload: { kind: params.kind, ...(params.payload ?? {}) },
     },
     userId
   );
