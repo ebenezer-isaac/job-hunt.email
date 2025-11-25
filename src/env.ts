@@ -1,5 +1,32 @@
 import { z } from "zod";
 
+const BASE64_REGEX = /^[A-Za-z0-9+/=]+$/;
+
+const aesGcmKeySchema = z.preprocess((value) => {
+  if (typeof value !== "string") {
+    return value;
+  }
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : undefined;
+},
+z
+  .string()
+  .superRefine((value, ctx) => {
+    if (!BASE64_REGEX.test(value)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY must be base64-encoded" });
+      return;
+    }
+    try {
+      const bytes = Buffer.from(value, "base64");
+      if (bytes.byteLength !== 32) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY must decode to exactly 32 bytes" });
+      }
+    } catch {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY is not valid base64" });
+    }
+  })
+  .optional());
+
 const booleanFromEnv = (defaultValue: boolean) =>
   z.preprocess((value) => {
     if (typeof value === "boolean") {
@@ -89,6 +116,7 @@ const serverSchema = z.object({
   FIREBASE_AUTH_COOKIE_SAME_SITE: z.enum(["lax", "strict", "none"]).default("lax"),
   FIREBASE_AUTH_COOKIE_DOMAIN: z.string().optional(),
   ACCESS_CONTROL_INTERNAL_TOKEN: z.string().min(32, "ACCESS_CONTROL_INTERNAL_TOKEN must be at least 32 characters"),
+  NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: aesGcmKeySchema,
   CONTACT_EMAIL: z.string().email("CONTACT_EMAIL must be a valid email address"),
   ADMIN_EMAIL: z.string().email().optional(),
 });
@@ -121,8 +149,12 @@ let cachedEnv: Env | null = null;
 
 export function validateEnv(): Env {
   if (!cachedEnv) {
+    const serverEnv = serverSchema.parse(process.env);
+    if (serverEnv.NODE_ENV === "production" && !serverEnv.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY) {
+      throw new Error("NEXT_SERVER_ACTIONS_ENCRYPTION_KEY is required in production to keep Server Action encryption keys stable across instances.");
+    }
     cachedEnv = {
-      ...serverSchema.parse(process.env),
+      ...serverEnv,
       ...clientSchema.parse(process.env),
     };
   }

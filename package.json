@@ -10,7 +10,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "seed:vector-store": "tsx scripts/seed-vector-store.ts",
-    "deploy": "tsx scripts/deploy.ts"
+    "deploy": "tsx scripts/deploy.ts",
+    "help": "tsx scripts/help.ts"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^7.1.0",

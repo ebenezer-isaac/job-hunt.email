@@ -531,14 +531,15 @@ function buildGenerationRuns(messages: ChatMessage[]): GenerationRun[] {
   };
 
   const startRun = (seed: ChatMessage, generationId?: string | null) => {
+    const seedTimestamp = resolveMessageTimestamp(seed);
     current = {
       id: generationId ?? seed.id,
       generationId: generationId ?? null,
       logs: [],
       request: undefined,
       summary: undefined,
-      startedAt: seed.timestamp,
-      lastUpdatedAt: seed.timestamp,
+      startedAt: seedTimestamp,
+      lastUpdatedAt: seedTimestamp,
     };
     return current;
   };
@@ -557,13 +558,24 @@ function buildGenerationRuns(messages: ChatMessage[]): GenerationRun[] {
   messages.forEach((message) => {
     const kind = resolveMessageKind(message);
     const generationId = typeof message.metadata?.generationId === "string" ? message.metadata.generationId : null;
+    const resolvedTimestamp = resolveMessageTimestamp(message);
 
     if (kind === "prompt") {
+      const matchesCurrent =
+        current &&
+        ((generationId && (current.generationId === generationId || current.id === generationId)) ||
+          (!generationId && !current.generationId));
+      if (matchesCurrent && current) {
+        current.request = message;
+        current.startedAt = resolvedTimestamp;
+        current.lastUpdatedAt = resolvedTimestamp;
+        return;
+      }
       finalize();
       const run = startRun(message, generationId ?? message.id);
       run.request = message;
-      run.startedAt = message.timestamp;
-      run.lastUpdatedAt = message.timestamp;
+      run.startedAt = resolvedTimestamp;
+      run.lastUpdatedAt = resolvedTimestamp;
       return;
     }
 
@@ -579,16 +591,16 @@ function buildGenerationRuns(messages: ChatMessage[]): GenerationRun[] {
         target.logs.push({
           id: `${message.id}-${lineIndex}`,
           content: line,
-          timestamp: message.timestamp,
+          timestamp: resolvedTimestamp,
           level: message.level ?? "info",
         });
       });
-      target.lastUpdatedAt = message.timestamp;
+      target.lastUpdatedAt = resolvedTimestamp;
       return;
     }
 
     target.summary = message;
-    target.lastUpdatedAt = message.timestamp;
+    target.lastUpdatedAt = resolvedTimestamp;
   });
 
   finalize();
@@ -623,6 +635,10 @@ function resolveMessageKind(message: ChatMessage): MessageKind {
     return "prompt";
   }
   return "summary";
+}
+
+function resolveMessageTimestamp(message: ChatMessage): string {
+  return message.metadata?.clientTimestamp ?? message.timestamp;
 }
 
 function splitLogLines(content: string): string[] {

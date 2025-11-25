@@ -303,18 +303,21 @@ function mapChatHistory(rawHistory: unknown[]): SerializableChatMessage[] {
     const kind = typeof kindRaw === "string" ? (kindRaw as ChatMessageKind) : undefined;
     const rawJobInput = typeof payload["rawJobInput"] === "string" ? (payload["rawJobInput"] as string) : undefined;
     const generationId = typeof payload["generationId"] === "string" ? (payload["generationId"] as string) : undefined;
+    const clientTimestamp = typeof payload["clientTimestamp"] === "string" ? (payload["clientTimestamp"] as string) : undefined;
+    const resolvedTimestamp = clientTimestamp ?? timestampRaw;
     const role: SerializableChatMessage["role"] = kind === "prompt" ? "user" : "assistant";
 
     return {
       id,
       role,
       content: String(record.message ?? ""),
-      timestamp: timestampRaw,
+      timestamp: resolvedTimestamp,
       level: (record.level as SerializableChatMessage["level"]) ?? "info",
       metadata: {
         kind: kind ?? "summary",
         rawJobInput,
         generationId,
+        clientTimestamp,
       },
     };
   });

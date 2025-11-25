@@ -19,17 +19,20 @@ function mapChatHistory(entries: ChatLogEntry[]): SerializableChatMessage[] {
     const kind = (payload["kind"] as ChatMessageKind) ?? "summary";
     const rawJobInput = typeof payload["rawJobInput"] === "string" ? (payload["rawJobInput"] as string) : undefined;
     const generationId = typeof payload["generationId"] === "string" ? (payload["generationId"] as string) : undefined;
+    const clientTimestamp = typeof payload["clientTimestamp"] === "string" ? (payload["clientTimestamp"] as string) : undefined;
+    const resolvedTimestamp = clientTimestamp ?? entry.timestamp;
 
     return {
       id: entry.id ?? `${entry.timestamp}-${index}`,
       role: kind === "prompt" ? "user" : "assistant",
       content: entry.message,
       level: entry.level,
-      timestamp: entry.timestamp,
+      timestamp: resolvedTimestamp,
       metadata: {
         kind,
         rawJobInput,
         generationId,
+        clientTimestamp,
       },
     };
   });

@@ -185,12 +185,12 @@ export function useChat() {
         content: userContent,
         timestamp,
         isMarkdown: false,
-        metadata: userMetadata,
+        metadata: { ...userMetadata, clientTimestamp: timestamp },
       };
 
       actions.appendChatMessage(sessionId, userMessage);
 
-      void appendLogAction({
+      await appendLogAction({
         sessionId,
         id: userMessage.id,
         message: userMessage.content,
@@ -200,6 +200,7 @@ export function useChat() {
           generationId,
           ...(preservedJobInput ? { rawJobInput: preservedJobInput } : {}),
         },
+        clientTimestamp: userMessage.timestamp,
       });
 
       const summaryParts = [
@@ -219,24 +220,26 @@ export function useChat() {
         summaryParts.push(`Contact → ${contactName}${contactTitle ? ` (${contactTitle})` : ""}`);
       }
 
+      const summaryTimestamp = new Date().toISOString();
       const summaryMessage = {
         id: createMessageId(sessionId, "system"),
         role: "system" as const,
         content: summaryParts.join("\n"),
-        timestamp: new Date().toISOString(),
+        timestamp: summaryTimestamp,
         level: "info" as const,
-        metadata: { kind: "summary" as ChatMessageKind, generationId },
+        metadata: { kind: "summary" as ChatMessageKind, generationId, clientTimestamp: summaryTimestamp },
       };
 
       actions.appendChatMessage(sessionId, summaryMessage);
 
-      void appendLogAction({
+      await appendLogAction({
         sessionId,
         id: summaryMessage.id,
         message: summaryMessage.content,
         level: "info",
         kind: "summary",
         payload: { generationId },
+        clientTimestamp: summaryMessage.timestamp,
       });
 
       const formData = new FormData();

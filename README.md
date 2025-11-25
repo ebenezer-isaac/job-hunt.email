@@ -104,13 +104,20 @@ This app uses Firebase for logging in and saving your data.
 *Note: CV customization and cover letters work fine without this.*
 
 ### 6. Final Configuration
-You need to generate two secure random strings for security.
-Run this in your terminal (Node.js required):
-```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-```
-*   Copy the output and paste it into `.env.local` for `ACCESS_CONTROL_INTERNAL_TOKEN`.
-*   Run it again and paste it for `FIREBASE_AUTH_COOKIE_SIGNATURE_KEYS`.
+You need a few secure random strings for auth + Server Actions:
+
+1. **Internal token** (48-byte base64) for `ACCESS_CONTROL_INTERNAL_TOKEN`:
+  ```bash
+  node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"
+  ```
+2. **Cookie signatures** (generate twice, comma-separate both outputs) for `FIREBASE_AUTH_COOKIE_SIGNATURE_KEYS`:
+  ```bash
+  node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+  ```
+3. **Deterministic Server Action key** (32-byte base64) for `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` so multi-instance deployments stop throwing `failed-to-find-server-action`:
+  ```bash
+  node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+  ```
 
 ### 7. Admin Access (Recommended)
 To avoid manually editing the database to allow yourself in, set your email as the admin.
@@ -259,6 +266,46 @@ src/
 | `.env.build` | Deployment/CI inputs. `scripts/build-env-secrets.ts` sanitizes this file and turns the values into secret payloads for Cloud Run/GCP. |
 
 > Tip: Keep `.env.local` and `.env.build` in sync. The only difference should be production URLs or stricter cookie flags.
+
+## Script Commands
+
+### npm scripts
+
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Boots the tailored dev server (`scripts/dev.ts`): seeds the local vector store when persistence is enabled, then runs `next dev`. |
+| `npm run dev:nodemon` | Starts `nodemon` with `nodemon.json` so backend code reloads without the dev bootstrap. |
+| `npm run build` | Runs `next build` to produce the production bundle; requires all mandatory env vars (including `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY`). |
+| `npm run start` | Serves the already-built app with `next start` (use the same env that was present during the build). |
+| `npm run lint` | Executes ESLint across the repo. |
+| `npm run test` | Runs the Vitest suite in `run` mode. |
+| `npm run seed:vector-store` | Manually invokes the vector-store seeding workflow. |
+| `npm run deploy` | Runs `scripts/deploy.ts`, which syncs `.env.build` secrets, builds via Cloud Build, and deploys the Cloud Run service. |
+| `npm run help` | Prints the curated command reference shown below directly to the terminal. |
+
+Run `npm run help` whenever you need a quick, always-up-to-date reminder of the available scripts.
+
+### Utility scripts (via `npx tsx` unless noted)
+
+| Command | Purpose | Notes |
+| --- | --- | --- |
+| `npx tsx scripts/build-env-secrets.ts` | Sanitizes `.env.build`, writes `.env.build.clean`, and produces `tmp/secrets/*.txt` plus `tmp/upload-secrets.ps1`. | Run before rotating secrets so `pwsh tmp/upload-secrets.ps1` can push them to Secret Manager. |
+| `npx tsx scripts/delete-all-secrets.ts` | Deletes **all** secrets in the active GCP project. | Destructive; useful when resetting a sandbox. |
+| `npx tsx scripts/seed-vector-store.ts` | Seeds the recon strategy document into the persisted LlamaIndex store. | `LLAMAINDEX_ENABLE_PERSISTENCE` must be true. |
+| `npx tsx scripts/export-prompts.ts` | Regenerates `src/prompts.json` from `src/lib/ai/prompts.ts` with metadata. | Keeps the prompt catalog in sync after edits. |
+| `npx tsx scripts/expire-processing.ts` | Marks stuck sessions (past `processingDeadline`) as failed and releases their quota holds. | Safe to run as a cron/Cloud Scheduler task. |
+| `npx tsx scripts/clear-firestore-logs.ts --force` | Deletes Firestore log documents in batches. | Requires `--force` (or `-y`) to avoid accidental wipes. |
+| `npx tsx scripts/dump-firestore-logs.ts` | Prints the most recent Firestore log entries to stdout. | Respects `FIREBASE_LOG_COLLECTION` and `FIREBASE_LOG_FETCH_LIMIT`. |
+| `npx tsx scripts/render-firestore-log-viewer.ts --limit=500` | Renders `tmp/firebase-log-viewer.html`, a searchable DataTables UI for logs. | Adjust `--limit` to trade off size vs. detail. |
+| `npx tsx scripts/test-firestore-logging.ts` | Writes an `INFO` log entry into the `appLogs` collection. | Handy for verifying local credentials. |
+| `npx tsx scripts/test-gcp-logging.ts` | Same payload as above, intended for Cloud Run/GCP smoke tests. | Run within the deployed environment to confirm IAM/routing. |
+| `npx tsx scripts/test-gemini-generation.ts` | Exercises the configured Gemini model(s) with a sample prompt. | Requires `GEMINI_API_KEY` and model env vars in `.env.local`. |
+| `npx tsx scripts/test-rag-generation.ts` | Validates the LlamaIndex runtime + embeddings by running a miniature RAG query. | Loads `.env.local` before importing repo code. |
+| `node test-fetch.js` | Sends a sample payload to `/api/log` using the internal token. | Set `ACCESS_CONTROL_INTERNAL_TOKEN` in your shell first. |
+| `pwsh scripts/remediate-logging.ps1` | Restores Cloud Run logging IAM bindings and checks `_Default` sinks. | Requires the gcloud CLI with project access. |
+| `pwsh tmp/upload-secrets.ps1` | Uploads the sanitized secret payloads generated by `scripts/build-env-secrets.ts` to Secret Manager. | Re-run after rotating values inside `.env.build`. |
+
+All scripts assume `corepack enable`/`npm install` has been run so `tsx`, `next`, and related CLIs are available.
 
 ## Contributing
 

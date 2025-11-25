@@ -7,6 +7,7 @@ export type ChatMessageMetadata = {
   durationMs?: number;
   rawJobInput?: string;
   generationId?: string;
+  clientTimestamp?: string;
 } | null;
 
 export type SerializableChatMessage = {

@@ -4,14 +4,19 @@ substitutions:
   _REGION: us-central1
   _SERVICE: job-hunt-email
   _REPOSITORY: job-hunt-email
-  _APP_URL: https://job-hunt.email
-  _REPO_URL: https://github.com/ebenezer-isaac/job-hunt.email
   _TAG: latest
 
 options:
-  logging: GCS_ONLY
+  diskSizeGb: 200
 
 steps:
+  - id: pull-cache
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - "-c"
+      - "docker pull us-central1-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:latest || true"
+
   - id: build-image
     name: gcr.io/cloud-builders/docker
     env:
@@ -19,10 +24,16 @@ steps:
     args:
       [
         "build",
+        "--build-arg",
+        "BUILDKIT_INLINE_CACHE=1",
+        "--cache-from",
+        "us-central1-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:latest",
         "--secret",
         "id=env,src=.env.build",
         "-t",
         "us-central1-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:${_TAG}",
+        "-t",
+        "us-central1-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:latest",
         ".",
       ]
 
@@ -34,21 +45,32 @@ steps:
         "us-central1-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:${_TAG}",
       ]
 
+  - id: push-cache-tag
+    name: gcr.io/cloud-builders/docker
+    args:
+      [
+        "push",
+        "us-central1-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:latest",
+      ]
+
   - id: deploy-cloud-run
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
     args:
-      [
-        "run", "deploy", "${_SERVICE}",
-        "--image", "us-central1-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:${_TAG}",
-        "--region", "${_REGION}",
-        "--platform", "managed",
-        "--port", "8080",
-        "--allow-unauthenticated",
-        "--set-env-vars", "NEXT_PUBLIC_APP_ENV=production,NEXT_PUBLIC_APP_URL=${_APP_URL},NEXT_PUBLIC_REPO_URL=${_REPO_URL},APP_URL=${_APP_URL},LOG_LEVEL=info,NODE_ENV=production",
-        "--set-secrets",
-        "GEMINI_API_KEY=GEMINI_API_KEY:latest,APOLLO_API_KEY=APOLLO_API_KEY:latest,FIREBASE_PROJECT_ID=FIREBASE_PROJECT_ID:latest,FIREBASE_CLIENT_EMAIL=FIREBASE_CLIENT_EMAIL:latest,FIREBASE_PRIVATE_KEY=FIREBASE_PRIVATE_KEY:latest,FIREBASE_API_KEY=FIREBASE_API_KEY:latest,FIREBASE_STORAGE_BUCKET=FIREBASE_STORAGE_BUCKET:latest,FIREBASE_AUTH_COOKIE_SIGNATURE_KEYS=FIREBASE_AUTH_COOKIE_SIGNATURE_KEYS:latest,ACCESS_CONTROL_INTERNAL_TOKEN=ACCESS_CONTROL_INTERNAL_TOKEN:latest,CONTACT_EMAIL=CONTACT_EMAIL:latest,NEXT_PUBLIC_CONTACT_EMAIL=CONTACT_EMAIL:latest,NEXT_PUBLIC_FIREBASE_API_KEY=NEXT_PUBLIC_FIREBASE_API_KEY:latest,NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN:latest,NEXT_PUBLIC_FIREBASE_PROJECT_ID=NEXT_PUBLIC_FIREBASE_PROJECT_ID:latest"
-      ]
+      - "run"
+      - "deploy"
+      - "${_SERVICE}"
+      - "--image"
+      - "us-central1-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:${_TAG}"
+      - "--region"
+      - "${_REGION}"
+      - "--platform"
+      - "managed"
+      - "--port"
+      - "8080"
+      - "--allow-unauthenticated"
+      # __DYNAMIC_ARGUMENTS__
 
 images:
   - "us-central1-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:${_TAG}"
+  - "us-central1-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:latest"

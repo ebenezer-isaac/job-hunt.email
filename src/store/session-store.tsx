@@ -98,7 +98,7 @@ function mergeChatHistories(serverHistory: ChatMessage[], existingHistory: ChatM
         existing.content === message.content &&
         existing.role === message.role &&
         existing.level === message.level &&
-        Math.abs(safeTimestamp(existing.timestamp) - safeTimestamp(message.timestamp)) < 10000 // 10s window
+        Math.abs(effectiveTimestamp(existing) - effectiveTimestamp(message)) < 10000 // 10s window
       );
     })?.id;
 
@@ -107,12 +107,17 @@ function mergeChatHistories(serverHistory: ChatMessage[], existingHistory: ChatM
     }
     mergedMap.set(message.id, message);
   }
-  return Array.from(mergedMap.values()).sort((a, b) => safeTimestamp(a.timestamp) - safeTimestamp(b.timestamp));
+  return Array.from(mergedMap.values()).sort((a, b) => effectiveTimestamp(a) - effectiveTimestamp(b));
 }
 
 function safeTimestamp(value: string): number {
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function effectiveTimestamp(message: ChatMessage): number {
+  const source = message.metadata?.clientTimestamp ?? message.timestamp;
+  return safeTimestamp(source);
 }
 
 type ArtifactPreviews = {
