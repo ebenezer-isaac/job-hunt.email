@@ -1,4 +1,5 @@
 import type { LogEntry, LogLevel, LogTransport } from "@/lib/logging/types";
+import { sanitizeForLogging } from "@/lib/logging/redaction";
 import { PUBLIC_ROUTE_SEGMENTS } from "./auth-shared";
 
 type HttpTransportOptions = {
@@ -270,20 +271,21 @@ function formatMessage(message: string, stepIndex?: number): string {
 }
 
 function normalizePayload(payload: unknown): unknown {
-  if (payload instanceof Error) {
-    return {
-      name: payload.name,
-      message: payload.message,
-      stack: payload.stack,
+  let workingPayload = payload;
+  if (workingPayload instanceof Error) {
+    workingPayload = {
+      name: workingPayload.name,
+      message: workingPayload.message,
+      stack: workingPayload.stack,
     };
   }
-  if (typeof payload === "bigint") {
-    return payload.toString();
+  if (typeof workingPayload === "bigint") {
+    workingPayload = workingPayload.toString();
   }
-  if (payload === undefined) {
+  if (workingPayload === undefined) {
     return undefined;
   }
-  return payload;
+  return sanitizeForLogging(workingPayload);
 }
 
 function createDefaultTransport(): LogTransport | null {

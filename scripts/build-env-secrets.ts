@@ -58,8 +58,8 @@ lines.forEach((rawLine, index) => {
   const rawValue = rawLine.slice(eqIndex + 1);
 
   const { cleaned: cleanedKey, hidden: hiddenKeyChars } = stripHiddenCharacters(rawKey);
-  let key = cleanedKey.trim();
-  let { cleaned: cleanedValue, hidden: hiddenValueChars } = stripHiddenCharacters(rawValue);
+  const key = cleanedKey.trim();
+  const { cleaned: cleanedValue, hidden: hiddenValueChars } = stripHiddenCharacters(rawValue);
   let value = cleanedValue.trim();
 
   if (!key) {

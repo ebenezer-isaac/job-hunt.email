@@ -14,7 +14,7 @@ import {
 import { onAuthStateChanged } from "firebase/auth";
 import { firebaseApp, firebaseAuth } from "@/lib/firebase-client";
 import { useSessionStore, type ClientSession } from "@/store/session-store";
-import type { SerializableChatMessage } from "@/types/session";
+import type { SerializableChatMessage, ChatMessageKind } from "@/types/session";
 import { createDebugLogger, type DebugLogger } from "@/lib/debug-logger";
 import { listSessionsAction } from "@/app/actions/list-sessions";
 
@@ -71,6 +71,8 @@ export function useSessionSubscription(userId: string | null) {
   const currentSessionIdRef = useRef<string | null>(currentSessionId);
   const retryAttemptRef = useRef(0);
   const retryTimerRef = useRef<number | null>(null);
+  const manualSessionClearedRef = useRef(false);
+  const previousSessionIdRef = useRef<string | null>(currentSessionId);
 
   currentSessionIdRef.current = currentSessionId;
 
@@ -84,18 +86,27 @@ export function useSessionSubscription(userId: string | null) {
 
     const activeSessionId = currentSessionIdRef.current;
 
-    if (!activeSessionId && sessions[0]) {
+    if (!activeSessionId) {
+      if (!sessions.length) {
+        manualSessionClearedRef.current = false;
+        return;
+      }
+      if (manualSessionClearedRef.current) {
+        logger.info("User cleared session manually, keeping blank selection");
+        return;
+      }
       logger.info("Selecting first session because none is active", { selectedId: sessions[0].id });
       selectSession(sessions[0].id);
-    } else if (activeSessionId) {
-      const activeExists = sessions.some((session) => session.id === activeSessionId);
-      if (!activeExists && sessions[0]) {
-        logger.warn("Active session not found in snapshot, selecting fallback", {
-          previousActive: activeSessionId,
-          fallbackId: sessions[0].id,
-        });
-        selectSession(sessions[0].id);
-      }
+      return;
+    }
+
+    const activeExists = sessions.some((session) => session.id === activeSessionId);
+    if (!activeExists && sessions[0]) {
+      logger.warn("Active session not found in snapshot, selecting fallback", {
+        previousActive: activeSessionId,
+        fallbackId: sessions[0].id,
+      });
+      selectSession(sessions[0].id);
     }
   }, [selectSession, setSessions]);
 
@@ -143,6 +154,15 @@ export function useSessionSubscription(userId: string | null) {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (currentSessionId) {
+      manualSessionClearedRef.current = false;
+    } else if (previousSessionIdRef.current) {
+      manualSessionClearedRef.current = true;
+    }
+    previousSessionIdRef.current = currentSessionId;
+  }, [currentSessionId]);
 
   useEffect(() => {
     if (!userId || typeof window === "undefined") {
@@ -278,13 +298,27 @@ function mapChatHistory(rawHistory: unknown[]): SerializableChatMessage[] {
     const record = entry as Record<string, unknown>;
     const timestampRaw = typeof record.timestamp === "string" ? record.timestamp : new Date().toISOString();
     const id = typeof record.id === "string" ? record.id : `${timestampRaw}-${index}`;
+    const payload = (record.payload as Record<string, unknown>) ?? {};
+    const kindRaw = payload["kind"];
+    const kind = typeof kindRaw === "string" ? (kindRaw as ChatMessageKind) : undefined;
+    const rawJobInput = typeof payload["rawJobInput"] === "string" ? (payload["rawJobInput"] as string) : undefined;
+    const generationId = typeof payload["generationId"] === "string" ? (payload["generationId"] as string) : undefined;
+    const clientTimestamp = typeof payload["clientTimestamp"] === "string" ? (payload["clientTimestamp"] as string) : undefined;
+    const resolvedTimestamp = clientTimestamp ?? timestampRaw;
+    const role: SerializableChatMessage["role"] = kind === "prompt" ? "user" : "assistant";
+
     return {
       id,
-      role: "assistant",
+      role,
       content: String(record.message ?? ""),
-      timestamp: timestampRaw,
+      timestamp: resolvedTimestamp,
       level: (record.level as SerializableChatMessage["level"]) ?? "info",
-      metadata: (record.payload as Record<string, unknown>) ?? undefined,
+      metadata: {
+        kind: kind ?? "summary",
+        rawJobInput,
+        generationId,
+        clientTimestamp,
+      },
     };
   });
 }

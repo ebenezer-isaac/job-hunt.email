@@ -19,7 +19,8 @@ async function main() {
     }
 
     console.log("Llama runtime initialized.");
-    console.log("Model:", (llm as any).model);
+    const resolvedModel = (llm as { model?: string }).model ?? llm.metadata?.model ?? "unknown";
+    console.log("Model:", resolvedModel);
     console.log("Metadata:", llm.metadata);
 
     // Manually set Settings to ensure they are set on the instance we are using
@@ -36,7 +37,8 @@ async function main() {
     console.log("Response:", response.toString());
 
   } catch (error) {
-    console.error("Error:", error);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Error:", message);
   }
 }
 

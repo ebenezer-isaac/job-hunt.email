@@ -5,6 +5,9 @@ export type ChatMessageKind = "prompt" | "summary" | "log" | "system";
 export type ChatMessageMetadata = {
   kind?: ChatMessageKind;
   durationMs?: number;
+  rawJobInput?: string;
+  generationId?: string;
+  clientTimestamp?: string;
 } | null;
 
 export type SerializableChatMessage = {

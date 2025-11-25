@@ -2,25 +2,24 @@
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
-  faBrain,
   faLink,
   faFileLines,
   faComments,
   faFilePdf,
   faEnvelope,
-  faPaperPlane,
   faCopy,
   faDownload,
-  faChevronDown,
-  faChevronUp,
   faXmark,
-  faList
+  faList,
+  faTrash
 } from "@fortawesome/free-solid-svg-icons";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { useSessionStore, type ChatMessage } from "@/store/session-store";
 import type { ArtifactPayload } from "@/hooks/useStreamableValue";
+import { deleteGenerationAction } from "@/app/actions/delete-generation";
+import { toast } from "sonner";
 
 type GenerationStatus = "pending" | "in-progress" | "completed" | "failed";
 
@@ -39,6 +38,8 @@ type GenerationRun = {
   summary?: ChatMessage;
   startedAt: string;
   lastUpdatedAt: string;
+  generationId?: string | null;
+  hasStableId: boolean;
 };
 
 export function ChatView() {
@@ -46,6 +47,7 @@ export function ChatView() {
   const generatedDocuments = useSessionStore((state) => state.generatedDocuments);
   const isGenerating = useSessionStore((state) => state.isGenerating);
   const currentSessionId = useSessionStore((state) => state.currentSessionId);
+  const { upsertSession } = useSessionStore((state) => state.actions);
   const containerRef = useRef<HTMLDivElement>(null);
   const generations = useMemo(() => buildGenerationRuns(chatHistory), [chatHistory]);
   const lastWithLogs = useMemo(() => [...generations].reverse().find((run) => run.logs.length > 0) ?? null, [generations]);
@@ -55,6 +57,7 @@ export function ChatView() {
   const panelOpen = panelStateBySession[sessionKey] ?? false;
   const expandedGenerationId = expandedBySession[sessionKey] ?? null;
   const userDismissedRef = useRef(false);
+  const [deletingGenerationId, setDeletingGenerationId] = useState<string | null>(null);
 
   const setPanelOpenForSession = useCallback(
     (value: boolean) => {
@@ -144,6 +147,49 @@ export function ChatView() {
     setExpandedAuto(null);
   }, [generations, lastWithLogs, panelOpen, setExpandedAuto, setPanelOpenForSession]);
 
+  const handleDeleteGeneration = useCallback(
+    async (generation: GenerationRun) => {
+      if (!currentSessionId) {
+        toast.error("Select a session before deleting a generation.");
+        return;
+      }
+      if (!generation.hasStableId || !generation.generationId) {
+        toast.error("Deletion is only available for recent generations.");
+        return;
+      }
+      if (deletingGenerationId) {
+        return;
+      }
+      setDeletingGenerationId(generation.generationId);
+      try {
+        const messageIds = [generation.request?.id, generation.summary?.id].filter((value): value is string => Boolean(value));
+        const updatedSession = await deleteGenerationAction({
+          sessionId: currentSessionId,
+          generationId: generation.generationId,
+          messageIds,
+        });
+        const sanitizedSession = {
+          ...updatedSession,
+          chatHistory: updatedSession.chatHistory.filter((message) => {
+            const metaId = message.metadata?.generationId;
+            return !metaId || metaId !== generation.generationId;
+          }),
+        };
+        upsertSession(sanitizedSession);
+        toast.success("Generation deleted");
+        if (expandedGenerationId === generation.id) {
+          setExpandedManual(null);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        toast.error(`Failed to delete generation: ${message}`);
+      } finally {
+        setDeletingGenerationId((prev) => (prev === generation.generationId ? null : prev));
+      }
+    },
+    [currentSessionId, deletingGenerationId, expandedGenerationId, setExpandedManual, upsertSession],
+  );
+
   const showWelcome = generations.length === 0 && !generatedDocuments;
 
   return (
@@ -186,6 +232,8 @@ export function ChatView() {
           setPanelOpenForSession(false);
         }}
         isGenerating={isGenerating}
+        onDeleteGeneration={handleDeleteGeneration}
+        deletingGenerationId={deletingGenerationId}
       />
     </div>
   );
@@ -238,9 +286,11 @@ type GenerationLogsPanelProps = {
   onUserToggle: (id: string | null) => void;
   onClose: () => void;
   isGenerating: boolean;
+  onDeleteGeneration: (generation: GenerationRun) => void;
+  deletingGenerationId: string | null;
 };
 
-function GenerationLogsPanel({ open, generations, expandedId, onUserToggle, onClose, isGenerating }: GenerationLogsPanelProps) {
+function GenerationLogsPanel({ open, generations, expandedId, onUserToggle, onClose, isGenerating, onDeleteGeneration, deletingGenerationId }: GenerationLogsPanelProps) {
   if (!open) {
     return null;
   }
@@ -254,6 +304,8 @@ function GenerationLogsPanel({ open, generations, expandedId, onUserToggle, onCl
           onUserToggle={onUserToggle}
           onClose={onClose}
           isGenerating={isGenerating}
+          onDeleteGeneration={onDeleteGeneration}
+          deletingGenerationId={deletingGenerationId}
         />
       </aside>
       <div className="fixed inset-0 z-50 bg-black/20 backdrop-blur-sm lg:hidden" onClick={onClose} />
@@ -264,6 +316,8 @@ function GenerationLogsPanel({ open, generations, expandedId, onUserToggle, onCl
           onUserToggle={onUserToggle}
           onClose={onClose}
           isGenerating={isGenerating}
+          onDeleteGeneration={onDeleteGeneration}
+          deletingGenerationId={deletingGenerationId}
         />
       </div>
     </>
@@ -276,9 +330,11 @@ type PanelContentsProps = {
   onUserToggle: (id: string | null) => void;
   onClose: () => void;
   isGenerating: boolean;
+  onDeleteGeneration: (generation: GenerationRun) => void;
+  deletingGenerationId: string | null;
 };
 
-function PanelContents({ generations, expandedId, onUserToggle, onClose, isGenerating }: PanelContentsProps) {
+function PanelContents({ generations, expandedId, onUserToggle, onClose, isGenerating, onDeleteGeneration, deletingGenerationId }: PanelContentsProps) {
   const ordered = useMemo(() => [...generations].sort((a, b) => a.index - b.index), [generations]);
   const newestId = ordered[ordered.length - 1]?.id ?? null;
   return (
@@ -304,6 +360,8 @@ function PanelContents({ generations, expandedId, onUserToggle, onClose, isGener
           <ul className="space-y-3">
             {ordered.map((generation: GenerationRun) => {
               const isExpanded = expandedId === generation.id;
+              const canDelete = generation.hasStableId;
+              const deleting = generation.generationId ? deletingGenerationId === generation.generationId : false;
               return (
                 <GenerationListItem
                   key={generation.id}
@@ -312,6 +370,9 @@ function PanelContents({ generations, expandedId, onUserToggle, onClose, isGener
                   onToggle={() => onUserToggle(isExpanded ? null : generation.id)}
                   isLatest={generation.id === newestId}
                   isGenerating={isGenerating}
+                  onDelete={() => onDeleteGeneration(generation)}
+                  canDelete={canDelete}
+                  deleting={deleting}
                 />
               );
             })}
@@ -328,14 +389,16 @@ type GenerationListItemProps = {
   onToggle: () => void;
   isLatest: boolean;
   isGenerating: boolean;
+  onDelete: () => void;
+  canDelete: boolean;
+  deleting: boolean;
 };
 
-function GenerationListItem({ generation, isExpanded, onToggle, isLatest, isGenerating }: GenerationListItemProps) {
+function GenerationListItem({ generation, isExpanded, onToggle, isLatest, isGenerating, onDelete, canDelete, deleting }: GenerationListItemProps) {
   const status = deriveGenerationStatus(generation, isLatest, isGenerating);
   const durationMs = computeDurationMs(generation, status === "in-progress");
   const durationLabel = durationMs ? formatDuration(durationMs) : null;
   const summaryContent = generation.summary?.content ?? null;
-  const requestPreview = generation.request?.content ?? "No request captured for this generation.";
 
   return (
     <li className="rounded-2xl border border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 px-4 py-4">
@@ -344,7 +407,31 @@ function GenerationListItem({ generation, isExpanded, onToggle, isLatest, isGene
           <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Generation {generation.index}</p>
           <p className="text-xs text-zinc-500 dark:text-zinc-400">{formatFullTimestamp(generation.startedAt)}</p>
         </div>
-        <GenerationStatusBadge status={status} />
+        <div className="flex items-center gap-2">
+          <GenerationStatusBadge status={status} />
+          <button
+            type="button"
+            className={`inline-flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold transition ${
+              canDelete
+                ? "border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-900/30"
+                : "border-zinc-200 text-zinc-400 dark:border-zinc-800 dark:text-zinc-600"
+            }`}
+            aria-label={canDelete ? "Delete generation" : "Deletion unavailable for this generation"}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (canDelete && !deleting) {
+                onDelete();
+              }
+            }}
+            disabled={!canDelete || deleting}
+          >
+            {deleting ? (
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            ) : (
+              <FontAwesomeIcon icon={faTrash} />
+            )}
+          </button>
+        </div>
       </div>
       {summaryContent ? (
         <div className="prose prose-sm mt-3 text-sm text-zinc-800 dark:text-zinc-200">
@@ -406,6 +493,7 @@ type MessageKind = "prompt" | "summary" | "log";
 
 type TempGenerationRun = {
   id: string;
+  generationId?: string | null;
   logs: GenerationLogEntry[];
   request?: ChatMessage;
   summary?: ChatMessage;
@@ -417,6 +505,7 @@ type TempGenerationRun = {
 function buildGenerationRuns(messages: ChatMessage[]): GenerationRun[] {
   const runs: GenerationRun[] = [];
   let current: TempGenerationRun | null = null;
+  const seenRunIds = new Set<string>();
 
   const finalize = () => {
     if (!current) {
@@ -424,49 +513,77 @@ function buildGenerationRuns(messages: ChatMessage[]): GenerationRun[] {
     }
     const runIndex = runs.length + 1;
     const startedAt = current.request?.timestamp ?? current.startedAt;
+    const baseId = current.id || `generation-${runIndex}`;
+    const uniqueId = ensureUniqueRunId(baseId, seenRunIds);
+    seenRunIds.add(uniqueId);
     runs.push({
-      id: current.id || `generation-${runIndex}`,
+      id: uniqueId,
       index: runIndex,
       logs: [...current.logs],
       request: current.request,
       summary: current.summary,
       startedAt,
       lastUpdatedAt: current.lastUpdatedAt,
+      generationId: current.generationId ?? null,
+      hasStableId: Boolean(current.generationId),
     });
     current = null;
   };
 
-    const ensureRun = (seed: ChatMessage): TempGenerationRun => {
-      if (current) {
-        return current;
-      }
-      current = {
-        id: seed.id,
-        logs: [],
-        request: undefined,
-        summary: undefined,
-        startedAt: seed.timestamp,
-        lastUpdatedAt: seed.timestamp,
-      };
-      return current;
+  const startRun = (seed: ChatMessage, generationId?: string | null) => {
+    const seedTimestamp = resolveMessageTimestamp(seed);
+    current = {
+      id: generationId ?? seed.id,
+      generationId: generationId ?? null,
+      logs: [],
+      request: undefined,
+      summary: undefined,
+      startedAt: seedTimestamp,
+      lastUpdatedAt: seedTimestamp,
     };
+    return current;
+  };
+
+  const ensureRun = (seed: ChatMessage, generationId?: string | null): TempGenerationRun => {
+    if (!current) {
+      return startRun(seed, generationId);
+    }
+    if (generationId && current.id !== generationId) {
+      finalize();
+      return startRun(seed, generationId);
+    }
+    return current;
+  };
 
   messages.forEach((message) => {
     const kind = resolveMessageKind(message);
+    const generationId = typeof message.metadata?.generationId === "string" ? message.metadata.generationId : null;
+    const resolvedTimestamp = resolveMessageTimestamp(message);
+
     if (kind === "prompt") {
+      const matchesCurrent =
+        current &&
+        ((generationId && (current.generationId === generationId || current.id === generationId)) ||
+          (!generationId && !current.generationId));
+      if (matchesCurrent && current) {
+        current.request = message;
+        current.startedAt = resolvedTimestamp;
+        current.lastUpdatedAt = resolvedTimestamp;
+        return;
+      }
       finalize();
-      current = {
-        id: message.id,
-        logs: [],
-        request: message,
-        summary: undefined,
-        startedAt: message.timestamp,
-        lastUpdatedAt: message.timestamp,
-      };
+      const run = startRun(message, generationId ?? message.id);
+      run.request = message;
+      run.startedAt = resolvedTimestamp;
+      run.lastUpdatedAt = resolvedTimestamp;
       return;
     }
 
-    const target = ensureRun(message);
+    const target = ensureRun(message, generationId);
+    if (generationId && !target.generationId) {
+      target.generationId = generationId;
+      target.id = generationId;
+    }
 
     if (kind === "log") {
       const lines = splitLogLines(message.content);
@@ -474,20 +591,34 @@ function buildGenerationRuns(messages: ChatMessage[]): GenerationRun[] {
         target.logs.push({
           id: `${message.id}-${lineIndex}`,
           content: line,
-          timestamp: message.timestamp,
+          timestamp: resolvedTimestamp,
           level: message.level ?? "info",
         });
       });
-      target.lastUpdatedAt = message.timestamp;
+      target.lastUpdatedAt = resolvedTimestamp;
       return;
     }
 
     target.summary = message;
-    target.lastUpdatedAt = message.timestamp;
+    target.lastUpdatedAt = resolvedTimestamp;
   });
 
   finalize();
   return runs;
+}
+
+// Ensures panel entries receive React-safe identifiers even if the upstream generationId repeats.
+function ensureUniqueRunId(candidate: string, seen: Set<string>): string {
+  if (!seen.has(candidate)) {
+    return candidate;
+  }
+  let suffix = 2;
+  let next = `${candidate}#${suffix}`;
+  while (seen.has(next)) {
+    suffix += 1;
+    next = `${candidate}#${suffix}`;
+  }
+  return next;
 }
 
 function resolveMessageKind(message: ChatMessage): MessageKind {
@@ -504,6 +635,10 @@ function resolveMessageKind(message: ChatMessage): MessageKind {
     return "prompt";
   }
   return "summary";
+}
+
+function resolveMessageTimestamp(message: ChatMessage): string {
+  return message.metadata?.clientTimestamp ?? message.timestamp;
 }
 
 function splitLogLines(content: string): string[] {

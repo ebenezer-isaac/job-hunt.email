@@ -1,6 +1,7 @@
 import { MODEL_TYPES, type ModelClient } from "../model-client";
 import { renderPrompt } from "../prompts";
 import { resolveContactIntel, resolveResearchBrief } from "../context";
+import { clampStrategyForContext } from "../strategy-docs";
 import type { GenericColdEmailInput, PersonalizedColdEmailInput } from "../service-types";
 import { createDebugLogger } from "@/lib/debug-logger";
 
@@ -14,11 +15,12 @@ export function createOutreachTasks(client: ModelClient) {
       const { roleInsights, candidateInsights } = resolveResearchBrief(researchBrief);
       const prompt = renderPrompt("generatePersonalizedColdEmail", {
         ...rest,
+        coldEmailStrategy: clampStrategyForContext("coldEmailStrategy", rest.coldEmailStrategy),
         roleInsights,
         candidateInsights,
         contactIntelSummary: resolveContactIntel(contactIntelSummary),
       });
-      const result = await client.generateWithRetry(prompt, MODEL_TYPES.THINKING);
+      const result = await client.generateWithRetry(prompt, MODEL_TYPES.PRO);
       logger.info("Personalized cold email generated", { length: result.length });
       return result;
     },
@@ -29,11 +31,12 @@ export function createOutreachTasks(client: ModelClient) {
       const { roleInsights, candidateInsights } = resolveResearchBrief(researchBrief);
       const prompt = renderPrompt("generateGenericColdEmail", {
         ...rest,
+        coldEmailStrategy: clampStrategyForContext("coldEmailStrategy", rest.coldEmailStrategy),
         roleInsights,
         candidateInsights,
         contactIntelSummary: resolveContactIntel(contactIntelSummary),
       });
-      const result = await client.generateWithRetry(prompt, MODEL_TYPES.THINKING);
+      const result = await client.generateWithRetry(prompt, MODEL_TYPES.PRO);
       logger.info("Generic cold email generated", { length: result.length });
       return result;
     },

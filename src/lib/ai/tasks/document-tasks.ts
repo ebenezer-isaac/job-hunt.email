@@ -1,6 +1,7 @@
 import { MODEL_TYPES, type ModelClient } from "../model-client";
 import { renderPrompt } from "../prompts";
 import { resolveResearchBrief } from "../context";
+import { clampStrategyForContext } from "../strategy-docs";
 import type {
   FixCVPageCountInput,
   GenerateCoverLetterInput,
@@ -19,10 +20,11 @@ export function createDocumentTasks(client: ModelClient) {
       const { roleInsights, candidateInsights } = resolveResearchBrief(researchBrief);
       const prompt = renderPrompt("generateCVAdvanced", {
         ...rest,
+        cvStrategy: clampStrategyForContext("cvStrategy", rest.cvStrategy),
         roleInsights,
         candidateInsights,
       });
-      const result = await client.generateWithRetry(prompt, MODEL_TYPES.THINKING);
+      const result = await client.generateWithRetry(prompt, MODEL_TYPES.PRO);
       logger.info("CV generation complete", { length: result.length });
       return result;
     },
@@ -41,7 +43,7 @@ export function createDocumentTasks(client: ModelClient) {
         targetPageCount: String(targetPageCount),
         jobDescription: input.jobDescription,
       });
-      const result = await client.generateWithRetry(prompt, MODEL_TYPES.THINKING);
+      const result = await client.generateWithRetry(prompt, MODEL_TYPES.PRO);
       logger.info("CV page count fix complete", { length: result.length });
       return result;
     },
@@ -52,6 +54,7 @@ export function createDocumentTasks(client: ModelClient) {
       const { roleInsights, candidateInsights } = resolveResearchBrief(researchBrief);
       const prompt = renderPrompt("generateCoverLetterAdvanced", {
         ...rest,
+        coverLetterStrategy: clampStrategyForContext("coverLetterStrategy", rest.coverLetterStrategy),
         currentDate:
           rest.currentDate ?? new Date().toLocaleDateString("en-US", {
             year: "numeric",
@@ -61,7 +64,7 @@ export function createDocumentTasks(client: ModelClient) {
         roleInsights,
         candidateInsights,
       });
-      const result = await client.generateWithRetry(prompt, MODEL_TYPES.THINKING);
+      const result = await client.generateWithRetry(prompt, MODEL_TYPES.PRO);
       logger.info("Cover letter generation complete", { length: result.length });
       return result;
     },
@@ -76,7 +79,7 @@ export function createDocumentTasks(client: ModelClient) {
         content: input.content,
         feedback: input.feedback,
       });
-      const result = await client.generateWithRetry(prompt, MODEL_TYPES.THINKING);
+      const result = await client.generateWithRetry(prompt, MODEL_TYPES.PRO);
       logger.info("Content refinement complete", { length: result.length });
       return result;
     },

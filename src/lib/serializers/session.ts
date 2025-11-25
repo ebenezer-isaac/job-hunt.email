@@ -1,5 +1,5 @@
 import type { ChatLogEntry, SessionRecord } from "@/lib/session";
-import type { SerializableSession, SerializableChatMessage } from "@/types/session";
+import type { SerializableSession, SerializableChatMessage, ChatMessageKind } from "@/types/session";
 
 function deriveTitle(record: SessionRecord): string {
   const company = String(record.metadata?.companyName ?? "").trim();
@@ -14,14 +14,28 @@ function deriveTitle(record: SessionRecord): string {
 }
 
 function mapChatHistory(entries: ChatLogEntry[]): SerializableChatMessage[] {
-  return entries.map((entry, index) => ({
-    id: `${entry.timestamp}-${index}`,
-    role: "assistant",
-    content: entry.message,
-    level: entry.level,
-    timestamp: entry.timestamp,
-    metadata: { kind: "summary" },
-  }));
+  return entries.map((entry, index) => {
+    const payload = entry.payload ?? {};
+    const kind = (payload["kind"] as ChatMessageKind) ?? "summary";
+    const rawJobInput = typeof payload["rawJobInput"] === "string" ? (payload["rawJobInput"] as string) : undefined;
+    const generationId = typeof payload["generationId"] === "string" ? (payload["generationId"] as string) : undefined;
+    const clientTimestamp = typeof payload["clientTimestamp"] === "string" ? (payload["clientTimestamp"] as string) : undefined;
+    const resolvedTimestamp = clientTimestamp ?? entry.timestamp;
+
+    return {
+      id: entry.id ?? `${entry.timestamp}-${index}`,
+      role: kind === "prompt" ? "user" : "assistant",
+      content: entry.message,
+      level: entry.level,
+      timestamp: resolvedTimestamp,
+      metadata: {
+        kind,
+        rawJobInput,
+        generationId,
+        clientTimestamp,
+      },
+    };
+  });
 }
 
 export function serializeSession(record: SessionRecord): SerializableSession {

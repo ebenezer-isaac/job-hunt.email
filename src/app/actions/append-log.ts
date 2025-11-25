@@ -10,11 +10,19 @@ export type AppendLogParams = {
   message: string;
   level: "info" | "success" | "error";
   kind: ChatMessageKind;
+  payload?: Record<string, unknown>;
+  clientTimestamp?: string;
 };
 
 export async function appendLogAction(params: AppendLogParams) {
   const tokens = await requireServerAuthTokens();
   const userId = tokens.decodedToken.uid;
+
+  const payload: Record<string, unknown> = {
+    kind: params.kind,
+    ...(params.clientTimestamp ? { clientTimestamp: params.clientTimestamp } : {}),
+    ...(params.payload ?? {}),
+  };
 
   await sessionRepository.appendChatLog(
     params.sessionId,
@@ -22,7 +30,7 @@ export async function appendLogAction(params: AppendLogParams) {
       id: params.id,
       level: params.level,
       message: params.message,
-      payload: { kind: params.kind },
+      payload,
     },
     userId
   );
