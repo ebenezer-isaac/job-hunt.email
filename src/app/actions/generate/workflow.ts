@@ -4,6 +4,7 @@ import { createDebugLogger } from "@/lib/debug-logger";
 import type { ResearchBrief } from "@/lib/ai/llama/context-engine";
 import { buildContactIntelSummary, buildResearchBrief } from "@/lib/ai/llama/context-engine";
 import { getActiveRequestId } from "@/lib/logging/request-id-context";
+import { normalizeLatexSource } from "@/lib/latex-normalizer";
 
 import type { ParsedForm } from "./form";
 import { buildColdEmail, maybeEnrichContactWithApollo, parseColdEmailStructure } from "./cold-email";
@@ -146,9 +147,16 @@ export async function runGenerationWorkflow({ parsed, userId, emit, signal }: Wo
     jobTitle: parsed.jobTitle,
     researchBrief: researchBrief ?? undefined,
   });
+  const { output: normalizedCv, changes: latexNormalizationChanges } = normalizeLatexSource(cvResponse);
+  if (latexNormalizationChanges.length) {
+    actionLogger.data("latex-normalization-applied", {
+      sessionId: parsed.sessionId,
+      rules: latexNormalizationChanges,
+    });
+  }
   let cvPersistence;
   try {
-    cvPersistence = await persistCvArtifact(cvResponse, parsed, userId);
+    cvPersistence = await persistCvArtifact(normalizedCv, parsed, userId);
   } catch (compileError) {
     await emit(describeCvCompilationError(compileError));
     throw compileError;
