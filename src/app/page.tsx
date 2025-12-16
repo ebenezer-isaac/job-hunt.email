@@ -61,6 +61,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
     sourceDocuments: {
       originalCV: storedDocuments.originalCV,
       extensiveCV: storedDocuments.extensiveCV,
+      coverLetter: storedDocuments.coverLetter,
       cvStrategy: storedDocuments.cvStrategy || cvStrategy || "Maintain ATS compliance and quantified impact per bullet.",
       coverLetterStrategy:
         storedDocuments.coverLetterStrategy || coverLetterStrategy || "Concise one-page letter highlighting 2-3 achievements.",

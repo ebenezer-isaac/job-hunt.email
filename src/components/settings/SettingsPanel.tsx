@@ -6,14 +6,21 @@ import { toast } from "sonner";
 import { saveContentAction } from "@/app/actions/save-content";
 import { useSessionStore, type SessionStoreState } from "@/store/session-store";
 
-const TEXT_DOCS: Record<DocKey, { label: string; helper: string }> = {
+const TEXT_DOCS: Record<DocKey, { label: string; helper: string; placeholder: string }> = {
   original_cv: {
     label: "Original 2-page CV",
     helper: "Paste LaTeX (.tex) source exactly as compiled.",
+    placeholder: "Paste the full LaTeX (.tex) CV here",
   },
   extensive_cv: {
     label: "Extensive CV Context",
     helper: "Provide supporting plain text or Markdown context.",
+    placeholder: "Paste supporting context here",
+  },
+  cover_letter: {
+    label: "Cover Letter Draft",
+    helper: "Editable draft; auto-saves as you type.",
+    placeholder: "Write or paste your cover letter draft here",
   },
 };
 
@@ -40,7 +47,7 @@ const STRATEGY_DOCS: Record<StrategyKey, { label: string; helper: string; readOn
   },
 };
 
-type DocKey = "original_cv" | "extensive_cv";
+type DocKey = "original_cv" | "extensive_cv" | "cover_letter";
 type StrategyKey = "cv_strategy" | "cover_letter_strategy" | "cold_email_strategy" | "recon_strategy";
 type SourceDocKey = DocKey | StrategyKey;
 type StoreDocKey = keyof SessionStoreState["sourceDocuments"];
@@ -48,6 +55,7 @@ type StoreDocKey = keyof SessionStoreState["sourceDocuments"];
 const STORE_KEY_MAP: Record<SourceDocKey, StoreDocKey> = {
   original_cv: "originalCV",
   extensive_cv: "extensiveCV",
+  cover_letter: "coverLetter",
   cv_strategy: "cvStrategy",
   cover_letter_strategy: "coverLetterStrategy",
   cold_email_strategy: "coldEmailStrategy",
@@ -66,6 +74,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [saveState, setSaveState] = useState<Record<SourceDocKey, SaveState>>({
     original_cv: "idle",
     extensive_cv: "idle",
+    cover_letter: "idle",
     cv_strategy: "global",
     cover_letter_strategy: "global",
     cold_email_strategy: "global",
@@ -120,11 +129,22 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             key={docType}
             label={TEXT_DOCS[docType].label}
             helper={TEXT_DOCS[docType].helper}
-            value={docType === "original_cv" ? sourceDocuments.originalCV : sourceDocuments.extensiveCV}
+            value={(() => {
+              switch (docType) {
+                case "original_cv":
+                  return sourceDocuments.originalCV;
+                case "extensive_cv":
+                  return sourceDocuments.extensiveCV;
+                case "cover_letter":
+                  return sourceDocuments.coverLetter;
+                default:
+                  return "";
+              }
+            })()}
             status={saveState[docType]}
             onChange={(value) => handleChange(docType, value)}
             onBlur={() => debouncedSave.flush?.()}
-            placeholder={docType === "original_cv" ? "Paste the full LaTeX (.tex) CV here" : "Paste supporting context here"}
+            placeholder={TEXT_DOCS[docType].placeholder}
           />
         ))}
       </div>

@@ -1,9 +1,11 @@
+import { env } from "@/env";
 import { aiService } from "@/lib/ai/service";
-import type { DocumentService, CompileResult } from "@/lib/document-service";
+import type { DocumentService } from "@/lib/document-service";
 import { getStorageProvider } from "@/lib/storage/types";
 
 import type { ParsedForm } from "./form";
 
+// Note: storage is still required for non-CV artifacts, but CV no longer uploads PDFs.
 const storageProvider = getStorageProvider();
 let _documentService: DocumentService | null = null;
 
@@ -46,10 +48,12 @@ function slugify(value: string, fallback: string): string {
   return sanitized || fallback;
 }
 
-function buildCvFilename(parsed: ParsedForm): string {
+function buildCvFilename(parsed: ParsedForm, userDisplayName?: string | null): string {
   const company = slugify(parsed.companyName, "company");
   const role = slugify(parsed.jobTitle, "role");
-  return `${company}-${role}-cv.pdf`;
+  const candidate = userDisplayName ? slugify(userDisplayName, "") : "";
+  const namePrefix = candidate ? `${candidate}-` : "";
+  return `${namePrefix}${company}-${role}-cv.pdf`;
 }
 
 function extractPageCountFromMessage(message?: string): number | null {
@@ -64,42 +68,30 @@ export async function persistCvArtifact(
   cv: string,
   parsed: ParsedForm,
   userId: string,
-): Promise<{ cv: string; result: CompileResult }> {
-  const baseParams = {
-    texSource: cv,
-    storage: {
-      scope: "user" as const,
-      userId,
-      requestId: parsed.sessionId,
-      artifactName: buildCvFilename(parsed),
-      artifactCategory: "cv",
-    },
-    maxRetries: 2,
-  };
-
+  userDisplayName?: string | null,
+): Promise<{ cv: string; result: { pageCount: number | null } }> {
   const svc = await getDocumentService();
-  const initial = await svc.compileLatexToPdf(baseParams);
-  if (initial.success && initial.file) {
-    return { cv, result: initial };
+  const targetPageCount = env.TARGET_PAGE_COUNT;
+
+  // First pass: render without uploading to validate page count.
+  const initial = await svc.renderLatexEphemeral(cv);
+  if (initial.pageCount === targetPageCount) {
+    return { cv, result: { pageCount: initial.pageCount } };
   }
 
-  const pageCount = extractPageCountFromMessage(initial.message);
-  if (!pageCount) {
-    throw new Error(initial.message ?? "Unable to compile CV to PDF");
-  }
-
+  // Attempt to fix page count if off-target.
   const fixedCv = await aiService.fixCVPageCount({
     failedCV: cv,
-    actualPageCount: pageCount,
+    actualPageCount: initial.pageCount ?? undefined,
     jobDescription: parsed.jobDescription,
   });
 
-  const retry = await svc.compileLatexToPdf({ ...baseParams, texSource: fixedCv });
-  if (!retry.success || !retry.file) {
-    throw new Error(retry.message ?? "Failed to produce a two-page CV PDF");
+  const retry = await svc.renderLatexEphemeral(fixedCv);
+  if (retry.pageCount !== targetPageCount) {
+    throw new Error("Failed to produce a two-page CV PDF");
   }
 
-  return { cv: fixedCv, result: retry };
+  return { cv: fixedCv, result: { pageCount: retry.pageCount } };
 }
 
 export async function saveTextArtifact(

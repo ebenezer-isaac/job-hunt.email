@@ -83,9 +83,6 @@ export function useChat() {
     }
 
     actions.setIsGenerating(currentSessionId ?? null, true);
-    if (currentSessionId) {
-      actions.setGeneratedDocuments(currentSessionId, null);
-    }
     reset();
 
     const generationId = createGenerationId();
@@ -158,7 +155,6 @@ export function useChat() {
       if (ensured.wasCreated) {
         actions.selectSession(sessionId);
       }
-      actions.setGeneratedDocuments(sessionId, null);
 
       const requestTimestamp = new Date().toISOString();
       actions.touchSessionTimestamp(sessionId, requestTimestamp);
@@ -284,7 +280,21 @@ export function useChat() {
       });
 
       if (!response.ok || !response.body) {
-        throw new Error("Streaming response not available");
+        const errorText = await response.text().catch(() => "");
+        const message = errorText || "Unable to start generation. Please try again.";
+        if (sessionId) {
+          actions.setSessionStatus(sessionId, "failed");
+          actions.appendChatMessage(sessionId, {
+            id: createMessageId(sessionId, "error"),
+            role: "system",
+            content: `Generation failed: ${message}`,
+            timestamp: new Date().toISOString(),
+            level: "error",
+            metadata: { kind: "summary" as ChatMessageKind, generationId },
+          });
+        }
+        toast.error(`Generation failed: ${message}`);
+        return null;
       }
 
       streamStarted = true;

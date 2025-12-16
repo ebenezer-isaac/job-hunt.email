@@ -317,7 +317,7 @@ export class SessionRepository {
       const snap = await tx.get(ref);
       if (!snap.exists) {
         this.logger.warn("Session not found during delete", { id });
-        throw new Error(`Session ${id} not found`);
+        return { deletedFileKeys: [] };
       }
       const current = snap.data();
       if (!current) {

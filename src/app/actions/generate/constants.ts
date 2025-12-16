@@ -1,0 +1,2 @@
+export const PROCESSING_TIMEOUT_MS = 45 * 60_000;
+export const ARTIFACT_PREVIEW_CHAR_LIMIT = 1000;

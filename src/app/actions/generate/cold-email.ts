@@ -1,4 +1,5 @@
 import { aiService } from "@/lib/ai/service";
+import type { RetryHandler } from "@/lib/ai/model-client";
 import { apolloService } from "@/lib/services/apollo-service";
 import { createDebugLogger } from "@/lib/debug-logger";
 import type { ResearchBrief } from "@/lib/ai/llama/context-engine";
@@ -113,6 +114,7 @@ export async function buildColdEmail(
   parsed: ParsedForm,
   validatedCVText: string,
   context: ColdEmailContext,
+  options?: { onRetry?: RetryHandler },
 ): Promise<string> {
   if (parsed.contactName && parsed.contactEmail) {
     return aiService.generatePersonalizedColdEmail({
@@ -126,7 +128,7 @@ export async function buildColdEmail(
       coldEmailStrategy: parsed.coldEmailStrategy,
       researchBrief: context.researchBrief || undefined,
       contactIntelSummary: context.contactIntelSummary || undefined,
-    });
+    }, options);
   }
 
   return aiService.generateGenericColdEmail({
@@ -138,5 +140,5 @@ export async function buildColdEmail(
     coldEmailStrategy: parsed.coldEmailStrategy,
     researchBrief: context.researchBrief || undefined,
     contactIntelSummary: context.contactIntelSummary || undefined,
-  });
+  }, options);
 }

@@ -11,6 +11,7 @@ const payloadSchema = z.object({
   docType: z.enum([
     "original_cv",
     "extensive_cv",
+    "cover_letter",
     "cv_strategy",
     "cover_letter_strategy",
     "cold_email_strategy",

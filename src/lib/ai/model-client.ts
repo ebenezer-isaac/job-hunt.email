@@ -14,6 +14,17 @@ export const MODEL_TYPES = {
 
 export type ModelType = (typeof MODEL_TYPES)[keyof typeof MODEL_TYPES];
 
+export type RetryInfo = {
+  attempt: number;
+  delayMs: number;
+  transport: string;
+  overload: boolean;
+  modelType: ModelType;
+  usingFallbackPro: boolean;
+};
+
+export type RetryHandler = (info: RetryInfo) => void;
+
 type JsonGenerationConfig = GenerationConfig & { responseMimeType?: string };
 
 export class ModelClient {
@@ -213,7 +224,12 @@ export class ModelClient {
     }
   }
 
-  async generateJsonWithRetry<T>(prompt: string, modelType: ModelType = MODEL_TYPES.PRO, tools?: Tool[]): Promise<T> {
+  async generateJsonWithRetry<T>(
+    prompt: string,
+    modelType: ModelType = MODEL_TYPES.PRO,
+    tools?: Tool[],
+    onRetry?: RetryHandler,
+  ): Promise<T> {
     const generationConfig: JsonGenerationConfig | undefined = tools?.length
       ? undefined // Gemini rejects responseMimeType when tool calling is enabled
       : { responseMimeType: "application/json" };
@@ -259,12 +275,18 @@ export class ModelClient {
           throw new AIFailureError(`AI JSON service failed: ${errorMessage}`, error, attempt);
         }
         if (this.isRetryableError(error) && attempt < this.maxRetries) {
-          this.logger.warn("Retryable JSON generation error", {
+          const delayMs = this.initialRetryDelay;
+          const transport = this.describeTransport(modelType, useFallbackPro);
+          this.logger.warn("Retryable JSON generation error", { attempt, delay: delayMs, transport });
+          onRetry?.({
             attempt,
-            delay: this.initialRetryDelay,
-            transport: this.describeTransport(modelType, useFallbackPro),
+            delayMs,
+            transport,
+            overload: this.isServiceUnavailableError(error),
+            modelType,
+            usingFallbackPro: useFallbackPro,
           });
-          await this.sleep(this.initialRetryDelay);
+          await this.sleep(delayMs);
           attempt += 1;
           continue;
         }
@@ -275,7 +297,12 @@ export class ModelClient {
     throw new AIFailureError("AI JSON service exhausted retries");
   }
 
-  async generateWithRetry(prompt: string, modelType: ModelType = MODEL_TYPES.PRO, tools?: Tool[]): Promise<string> {
+  async generateWithRetry(
+    prompt: string,
+    modelType: ModelType = MODEL_TYPES.PRO,
+    tools?: Tool[],
+    onRetry?: RetryHandler,
+  ): Promise<string> {
     let attempt = 1;
     let useFallbackPro = false;
     let overloadCount = 0;
@@ -309,12 +336,18 @@ export class ModelClient {
           }
         }
         if (this.isRetryableError(error) && attempt < this.maxRetries) {
-          this.logger.warn("Retryable text generation error", {
+          const delayMs = this.initialRetryDelay;
+          const transport = this.describeTransport(modelType, useFallbackPro);
+          this.logger.warn("Retryable text generation error", { attempt, delay: delayMs, transport });
+          onRetry?.({
             attempt,
-            delay: this.initialRetryDelay,
-            transport: this.describeTransport(modelType, useFallbackPro),
+            delayMs,
+            transport,
+            overload: this.isServiceUnavailableError(error),
+            modelType,
+            usingFallbackPro: useFallbackPro,
           });
-          await this.sleep(this.initialRetryDelay);
+          await this.sleep(delayMs);
           attempt += 1;
           continue;
         }

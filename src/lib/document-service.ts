@@ -154,6 +154,13 @@ export class DocumentService {
     };
   }
 
+  async renderLatexEphemeral(texSource: string): Promise<{ buffer: Buffer; pageCount: number }> {
+    assertSafeLatexSource(texSource);
+    const pdfBuffer = await this.renderLatex(texSource);
+    const pageCount = await this.getPdfPageCount(pdfBuffer);
+    return { buffer: pdfBuffer, pageCount };
+  }
+
   async saveTextArtifact(params: GenerateDocumentParams): Promise<StorageUploadResult> {
     const storageKey = this.resolveStorageKey(params.storage);
     this.traceRequestContext("save-text-artifact", {

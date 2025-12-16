@@ -1,4 +1,4 @@
-import { MODEL_TYPES, type ModelClient } from "../model-client";
+import { MODEL_TYPES, type ModelClient, type RetryHandler } from "../model-client";
 import { renderPrompt } from "../prompts";
 import { resolveContactIntel, resolveResearchBrief } from "../context";
 import { clampStrategyForContext } from "../strategy-docs";
@@ -7,9 +7,11 @@ import { createDebugLogger } from "@/lib/debug-logger";
 
 const logger = createDebugLogger("outreach-tasks");
 
+type TaskOptions = { onRetry?: RetryHandler };
+
 export function createOutreachTasks(client: ModelClient) {
   return {
-    async generatePersonalizedColdEmail(input: PersonalizedColdEmailInput): Promise<string> {
+    async generatePersonalizedColdEmail(input: PersonalizedColdEmailInput, options?: TaskOptions): Promise<string> {
       logger.step("Generating personalized cold email", { companyName: input.companyName, targetPerson: input.contactName });
       const { researchBrief, contactIntelSummary, ...rest } = input;
       const { roleInsights, candidateInsights } = resolveResearchBrief(researchBrief);
@@ -20,12 +22,12 @@ export function createOutreachTasks(client: ModelClient) {
         candidateInsights,
         contactIntelSummary: resolveContactIntel(contactIntelSummary),
       });
-      const result = await client.generateWithRetry(prompt, MODEL_TYPES.PRO);
+      const result = await client.generateWithRetry(prompt, MODEL_TYPES.PRO, undefined, options?.onRetry);
       logger.info("Personalized cold email generated", { length: result.length });
       return result;
     },
 
-    async generateGenericColdEmail(input: GenericColdEmailInput): Promise<string> {
+    async generateGenericColdEmail(input: GenericColdEmailInput, options?: TaskOptions): Promise<string> {
       logger.step("Generating generic cold email", { companyName: input.companyName, targetEmail: input.genericEmail });
       const { researchBrief, contactIntelSummary, ...rest } = input;
       const { roleInsights, candidateInsights } = resolveResearchBrief(researchBrief);
@@ -36,12 +38,12 @@ export function createOutreachTasks(client: ModelClient) {
         candidateInsights,
         contactIntelSummary: resolveContactIntel(contactIntelSummary),
       });
-      const result = await client.generateWithRetry(prompt, MODEL_TYPES.PRO);
+      const result = await client.generateWithRetry(prompt, MODEL_TYPES.PRO, undefined, options?.onRetry);
       logger.info("Generic cold email generated", { length: result.length });
       return result;
     },
 
-    async parseColdOutreachInput(userInput: string): Promise<{
+    async parseColdOutreachInput(userInput: string, options?: TaskOptions): Promise<{
       companyName: string;
       domainName: string | null;
       targetPerson: string | null;
@@ -54,7 +56,7 @@ export function createOutreachTasks(client: ModelClient) {
         domainName: string | null;
         targetPerson: string | null;
         roleContext: string | null;
-      }>(prompt, MODEL_TYPES.FLASH);
+      }>(prompt, MODEL_TYPES.FLASH, undefined, options?.onRetry);
       logger.info("Cold outreach input parsed", result);
       return result;
     },

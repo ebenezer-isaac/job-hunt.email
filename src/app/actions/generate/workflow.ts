@@ -1,55 +1,21 @@
-import { aiService } from "@/lib/ai/service";
-import type { GenerationArtifacts } from "@/hooks/useStreamableValue";
 import { createDebugLogger } from "@/lib/debug-logger";
-import type { ResearchBrief } from "@/lib/ai/llama/context-engine";
-import { buildContactIntelSummary, buildResearchBrief } from "@/lib/ai/llama/context-engine";
 import { getActiveRequestId } from "@/lib/logging/request-id-context";
-import { normalizeLatexSource } from "@/lib/latex-normalizer";
 
-import type { ParsedForm } from "./form";
-import { buildColdEmail, maybeEnrichContactWithApollo, parseColdEmailStructure } from "./cold-email";
+import { maybeGenerateColdEmailArtifact } from "./workflow/cold-email";
+import { maybeGenerateCoverLetterArtifact } from "./workflow/cover-letter";
+import { generateCvAndSummary } from "./workflow/cv";
+import { enrichContactData, includePrimaryContactEmail, maybeBuildContactIntelSummary } from "./workflow/contact-intel";
+import { assertNotAborted } from "./workflow/errors";
+import { buildArtifactsPayload } from "./workflow/payloads";
+import { synthesizeResearchBrief } from "./workflow/research";
+import type { WorkflowParams, WorkflowResult, ModelRetryNotifier } from "./workflow/types";
 import type { StoredArtifact } from "./storage";
-import { persistCvArtifact, saveTextArtifact } from "./storage";
+
+export { RequestAbortedError } from "./workflow/errors";
 
 const actionLogger = createDebugLogger("generate-action");
 
-export type WorkflowResult = {
-  artifactsPayload: GenerationArtifacts;
-  generatedFiles: Record<string, StoredArtifact["generatedFile"]>;
-  cvArtifact: StoredArtifact;
-  coverLetterArtifact: StoredArtifact | null;
-  coldEmailArtifact: StoredArtifact | null;
-  parsedEmails: string[];
-  researchBrief: ResearchBrief | null;
-};
-
-export type WorkflowParams = {
-  parsed: ParsedForm;
-  userId: string;
-  emit: (message: string) => Promise<void>;
-  signal?: AbortSignal;
-};
-
-function assertNotAborted(signal?: AbortSignal) {
-  if (signal?.aborted) {
-    throw new Error("Generation cancelled");
-  }
-}
-
-function describeCvCompilationError(error: unknown): string {
-  const rawMessage = error instanceof Error ? error.message : String(error);
-  const pageMatch = rawMessage.match(/PDF has (\d+) page/);
-  if (pageMatch) {
-    const pages = Number(pageMatch[1]);
-    return `CV PDF still has ${pages} page(s) instead of the target 2-page format. Tweaking the content and retrying usually fixes this.`;
-  }
-  if (rawMessage.toLowerCase().includes("pdflatex")) {
-    return "CV PDF compilation failed due to a LaTeX formatting error. Please try again in a minute.";
-  }
-  return `CV PDF compilation failed: ${rawMessage}`;
-}
-
-export async function runGenerationWorkflow({ parsed, userId, emit, signal }: WorkflowParams): Promise<WorkflowResult> {
+export async function runGenerationWorkflow({ parsed, userId, userDisplayName, emit, signal, log }: WorkflowParams): Promise<WorkflowResult> {
   const parsedEmails = parsed.emailAddresses
     .split(",")
     .map((email) => email.trim())
@@ -57,8 +23,14 @@ export async function runGenerationWorkflow({ parsed, userId, emit, signal }: Wo
   const isColdOutreach = parsed.mode === "cold_outreach";
   const shouldGenerateCoverLetter = !isColdOutreach;
   const shouldGenerateColdEmail = isColdOutreach;
-  let researchBrief: ResearchBrief | null = null;
-  let changeSummary: string | null = null;
+  let overloadRetryNotified = false;
+  const modelRetryNotifier: ModelRetryNotifier = (info) => {
+    if (!info.overload || overloadRetryNotified) {
+      return;
+    }
+    overloadRetryNotified = true;
+    void emit(`Model is overloaded. Retrying in ${Math.round(info.delayMs / 1000)}s...`);
+  };
   const activeRequestId = getActiveRequestId();
   if (activeRequestId) {
     actionLogger.step("Workflow detected active request context", {
@@ -92,6 +64,7 @@ export async function runGenerationWorkflow({ parsed, userId, emit, signal }: Wo
 
   assertNotAborted(signal);
   await emit(`Context confirmed → ${parsed.companyName} • ${parsed.jobTitle}`);
+  void log?.({ content: "Context confirmed", level: "info" });
   if (parsed.companyWebsite) {
     await emit(`Company website: ${parsed.companyWebsite}`);
   }
@@ -114,196 +87,82 @@ export async function runGenerationWorkflow({ parsed, userId, emit, signal }: Wo
       : "No validated contact emails detected — using fallback addresses.",
   );
   await emit("Generating tailored CV...");
-  try {
-    assertNotAborted(signal);
-    await emit("Synthesizing research brief with LlamaIndex...");
-    researchBrief = await buildResearchBrief({
-      jobDescription: parsed.jobDescription,
-      originalCV: parsed.originalCV,
-      extensiveCV: parsed.extensiveCV,
-      companyName: parsed.companyName,
-      jobTitle: parsed.jobTitle,
-    });
-    if (researchBrief) {
-      actionLogger.data("research-brief-metadata", {
-        roleInsightsLength: researchBrief.roleInsights?.length ?? 0,
-        candidateInsightsLength: researchBrief.candidateInsights?.length ?? 0,
-      });
-    }
-    await emit("Research brief ready — weaving insights into documents.");
-  } catch (researchError) {
-    const reason = researchError instanceof Error ? researchError.message : String(researchError);
-    actionLogger.warn("Failed to build research brief", { sessionId: parsed.sessionId, error: reason });
-    await emit(`Research brief unavailable: ${reason}`);
-  }
+  void log?.({ content: "Generating CV", level: "info" });
+  const researchBrief = await synthesizeResearchBrief({ parsed, emit, signal, logger: actionLogger });
 
-  assertNotAborted(signal);
-  const cvResponse = await aiService.generateCVAdvanced({
-    jobDescription: parsed.jobDescription,
-    originalCV: parsed.originalCV,
-    extensiveCV: parsed.extensiveCV,
-    cvStrategy: parsed.cvStrategy,
-    companyName: parsed.companyName,
-    jobTitle: parsed.jobTitle,
-    researchBrief: researchBrief ?? undefined,
+  const { cvPersistence, changeSummary } = await generateCvAndSummary({
+    parsed,
+    userId,
+    userDisplayName,
+    researchBrief,
+    emit,
+    signal,
+    modelRetryNotifier,
+    logger: actionLogger,
   });
-  const { output: normalizedCv, changes: latexNormalizationChanges } = normalizeLatexSource(cvResponse);
-  if (latexNormalizationChanges.length) {
-    actionLogger.data("latex-normalization-applied", {
-      sessionId: parsed.sessionId,
-      rules: latexNormalizationChanges,
-    });
-  }
-  let cvPersistence;
-  try {
-    cvPersistence = await persistCvArtifact(normalizedCv, parsed, userId);
-  } catch (compileError) {
-    await emit(describeCvCompilationError(compileError));
-    throw compileError;
-  }
-  await emit("CV PDF compiled successfully.");
-
-  try {
-    assertNotAborted(signal);
-    await emit("Comparing tailored CV against your original resume...");
-    changeSummary = await aiService.generateCVChangeSummary(parsed.originalCV, cvPersistence.cv);
-    await emit("CV change summary ready.");
-  } catch (summaryError) {
-    const reason = summaryError instanceof Error ? summaryError.message : String(summaryError);
-    actionLogger.warn("Failed to generate CV change summary", { sessionId: parsed.sessionId, error: reason });
-    await emit(`Change summary unavailable: ${reason}`);
-  }
+  void log?.({ content: "CV generated", level: "success" });
 
   assertNotAborted(signal);
-  await maybeEnrichContactWithApollo(parsed, emit);
-  if (parsed.contactEmail && !parsedEmails.includes(parsed.contactEmail)) {
-    parsedEmails.unshift(parsed.contactEmail);
-  }
-
-  let contactIntelSummary: string | null = null;
-  if (shouldGenerateColdEmail && (parsed.contactName || parsed.contactEmail)) {
-    try {
-      assertNotAborted(signal);
-      await emit("Building contact intelligence dossier...");
-      const linkedinUrl = parsed.jobSourceUrl && parsed.jobSourceUrl.toLowerCase().includes("linkedin.com")
-        ? parsed.jobSourceUrl
-        : undefined;
-      contactIntelSummary = await buildContactIntelSummary({
-        contactName: parsed.contactName || undefined,
-        contactTitle: parsed.contactTitle || undefined,
-        companyName: parsed.companyName,
-        companyProfile: parsed.companyProfile || undefined,
-        email: parsed.contactEmail || undefined,
-        linkedinUrl,
-      });
-      if (contactIntelSummary) {
-        actionLogger.data("contact-intel-metadata", {
-          length: contactIntelSummary.length,
-        });
-        await emit("Contact intel ready — personalizing outreach.");
-      } else {
-        await emit("Contact intel skipped: insufficient data.");
-      }
-    } catch (contactError) {
-      const reason = contactError instanceof Error ? contactError.message : String(contactError);
-      actionLogger.warn("Failed to build contact intel", { sessionId: parsed.sessionId, error: reason });
-      await emit(`Contact intel unavailable: ${reason}`);
-    }
-  }
+  await enrichContactData(parsed, emit);
+  includePrimaryContactEmail(parsed, parsedEmails);
+  const contactIntelSummary = await maybeBuildContactIntelSummary({
+    parsed,
+    emit,
+    signal,
+    logger: actionLogger,
+    shouldGenerateColdEmail,
+  });
 
   let coverLetterArtifact: StoredArtifact | null = null;
   if (shouldGenerateCoverLetter) {
-    assertNotAborted(signal);
-    await emit("Drafting cover letter...");
-    const coverLetterResponse = await aiService.generateCoverLetterAdvanced({
-      jobDescription: parsed.jobDescription,
-      companyName: parsed.companyName,
-      jobTitle: parsed.jobTitle,
-      validatedCVText: parsed.validatedCVText || cvPersistence.cv,
-      extensiveCV: parsed.extensiveCV,
-      coverLetterStrategy: parsed.coverLetterStrategy,
-      researchBrief: researchBrief ?? undefined,
-    });
-    coverLetterArtifact = await saveTextArtifact(
-      coverLetterResponse,
+    coverLetterArtifact = await maybeGenerateCoverLetterArtifact({
       parsed,
       userId,
-      "cover-letter.doc",
-      "cover-letter",
-      "Cover Letter (DOC)",
-      "application/msword",
-    );
-    await emit("Cover letter saved to storage.");
+      researchBrief,
+      cvPersistence,
+      emit,
+      signal,
+      modelRetryNotifier,
+    });
+    void log?.({ content: "Cover letter generated", level: "success" });
   } else {
     await emit("Skipping cover letter for cold outreach mode.");
+    void log?.({ content: "Cover letter skipped", level: "info" });
   }
 
   let coldEmailArtifact: StoredArtifact | null = null;
   if (shouldGenerateColdEmail) {
-    assertNotAborted(signal);
-    await emit("Preparing cold email...");
-    const coldEmailResponse = await buildColdEmail(
-      parsed,
-      parsed.validatedCVText || cvPersistence.cv,
-      { researchBrief, contactIntelSummary },
-    );
-    const coldEmailStructure = parseColdEmailStructure(coldEmailResponse);
-    const emailTarget = parsed.contactEmail || parsed.genericEmail || parsedEmails[0] || "hello@example.com";
-    coldEmailArtifact = await saveTextArtifact(
-      coldEmailResponse,
+    coldEmailArtifact = await maybeGenerateColdEmailArtifact({
       parsed,
       userId,
-      "cold-email.txt",
-      "cold-email",
-      "Cold Email (TXT)",
-    );
-    coldEmailArtifact.payload.emailAddresses = parsedEmails;
-    coldEmailArtifact.payload.subject = coldEmailStructure.subject;
-    coldEmailArtifact.payload.body = coldEmailStructure.body;
-    coldEmailArtifact.payload.toAddress = emailTarget;
-    await emit(`Cold email ready for ${emailTarget}.`);
+      researchBrief,
+      contactIntelSummary,
+      cvPersistence,
+      parsedEmails,
+      emit,
+      signal,
+      modelRetryNotifier,
+    });
+    void log?.({ content: "Cold email generated", level: "success" });
   } else {
     await emit("Skipping cold email for standard mode.");
+    void log?.({ content: "Cold email skipped", level: "info" });
   }
 
   assertNotAborted(signal);
   await emit("Saving artifacts to secure storage...");
-  const cvFile = cvPersistence.result.file;
-  if (!cvFile) {
-    throw new Error("CV PDF missing from DocumentService response");
-  }
-
-  const cvArtifact: StoredArtifact = {
-    payload: {
-      content: cvPersistence.cv,
-      downloadUrl: cvFile.url,
-      storageKey: cvFile.key,
-      mimeType: "application/pdf",
-      pageCount: cvPersistence.result.pageCount,
-      changeSummary: changeSummary ?? undefined,
-    },
-    generatedFile: {
-      key: cvFile.key,
-      url: cvFile.url,
-      label: "Tailored CV (PDF)",
-      mimeType: "application/pdf",
-    },
-  };
-
-  const artifactsPayload: GenerationArtifacts = { cv: cvArtifact.payload };
-  const generatedFiles: Record<string, StoredArtifact["generatedFile"]> = { cv: cvArtifact.generatedFile };
-
-  if (coverLetterArtifact) {
-    artifactsPayload.coverLetter = coverLetterArtifact.payload;
-    generatedFiles.coverLetter = coverLetterArtifact.generatedFile;
-  }
-  if (coldEmailArtifact) {
-    artifactsPayload.coldEmail = coldEmailArtifact.payload;
-    generatedFiles.coldEmail = coldEmailArtifact.generatedFile;
-  }
+  void log?.({ content: "Building artifacts payload", level: "info" });
+  const { artifactsPayload, generatedFiles, cvArtifact } = buildArtifactsPayload({
+    parsed,
+    cvPersistence,
+    changeSummary,
+    coverLetterArtifact,
+    coldEmailArtifact,
+  });
 
   assertNotAborted(signal);
   await emit(JSON.stringify(artifactsPayload));
+  void log?.({ content: "Generation completed", level: "success" });
   return {
     artifactsPayload,
     generatedFiles,

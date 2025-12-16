@@ -15,7 +15,7 @@ export type SerializableChatMessage = {
   role: "user" | "assistant" | "system";
   content: string;
   timestamp: string;
-  level?: "info" | "success" | "error";
+  level?: "info" | "success" | "warning" | "error";
   isMarkdown?: boolean;
   metadata?: ChatMessageMetadata;
   mergeDisabled?: boolean;
