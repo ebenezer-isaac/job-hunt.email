@@ -4,6 +4,7 @@ import { resolveResearchBrief } from "../context";
 import { clampStrategyForContext } from "../strategy-docs";
 import type {
   FixCVPageCountInput,
+  FixLatexErrorsAssistInput,
   GenerateCoverLetterInput,
   GenerateCVAdvancedInput,
   RefineContentInput,
@@ -47,6 +48,18 @@ export function createDocumentTasks(client: ModelClient) {
       });
       const result = await client.generateWithRetry(prompt, MODEL_TYPES.PRO, undefined, options?.onRetry);
       logger.info("CV page count fix complete", { length: result.length });
+      return result;
+    },
+
+    async fixLatexErrorsAssist(input: FixLatexErrorsAssistInput, options?: TaskOptions): Promise<string> {
+      logger.step("Fixing LaTeX compilation errors", { hasLog: Boolean(input.compilerLog), hasSummary: Boolean(input.errorSummary) });
+      const prompt = renderPrompt("fixLatexErrorsAssist", {
+        latexSource: input.latexSource,
+        errorSummary: input.errorSummary,
+        compilerLog: input.compilerLog,
+      });
+      const result = await client.generateWithRetry(prompt, MODEL_TYPES.PRO, undefined, options?.onRetry);
+      logger.info("LaTeX error fix attempt complete", { length: result.length });
       return result;
     },
 

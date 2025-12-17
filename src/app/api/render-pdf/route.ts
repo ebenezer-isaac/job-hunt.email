@@ -10,11 +10,38 @@ const storageProvider = getStorageProvider();
 const logger = createDebugLogger("render-pdf-route");
 const documentService = new DocumentService(storageProvider);
 
+type CvFilenameParts = {
+  companyName?: unknown;
+  jobTitle?: unknown;
+  userDisplayName?: unknown;
+};
+
+function slugifyForFilename(value: unknown, fallback: string): string {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) {
+    return fallback;
+  }
+  const sanitized = trimmed.replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  return sanitized || fallback;
+}
+
+function buildCvFilename(parts: CvFilenameParts): string {
+  const company = slugifyForFilename(parts.companyName, "company");
+  const role = slugifyForFilename(parts.jobTitle, "role");
+  const candidate = slugifyForFilename(parts.userDisplayName, "");
+  const namePrefix = candidate ? `${candidate}-` : "";
+  return `${namePrefix}${company}-${role}-cv.pdf`;
+}
+
 const schema = z.object({
   sessionId: z.string().min(1),
   artifact: z.literal("cv"),
   generationId: z.string().optional(),
   disposition: z.enum(["inline", "attachment"]).default("inline"),
+  candidate: z.string().optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -30,10 +57,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Invalid parameters" }, { status: 400 });
   }
 
-  const { sessionId, artifact, generationId, disposition } = parsed.data;
+  const { sessionId, artifact, generationId, disposition, candidate } = parsed.data;
 
   const tokens = await requireServerAuthTokens();
   const userId = tokens.decodedToken.uid;
+  const tokenDisplayName =
+    typeof tokens.decodedToken.name === "string" && tokens.decodedToken.name.trim().length
+      ? tokens.decodedToken.name
+      : typeof tokens.decodedToken.displayName === "string" && tokens.decodedToken.displayName.trim().length
+        ? tokens.decodedToken.displayName
+        : null;
 
   const session = await sessionRepository.getSession(sessionId);
   if (!session || session.userId !== userId) {
@@ -56,6 +89,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "No CV LaTeX available" }, { status: 404 });
   }
 
+  const filename = buildCvFilename({
+    companyName: session.metadata?.companyName,
+    jobTitle: session.metadata?.jobTitle,
+    userDisplayName: candidate || tokenDisplayName,
+  });
+
   try {
     const { buffer, pageCount } = await documentService.renderLatexEphemeral(latex);
     const arrayBuffer = Uint8Array.from(buffer).buffer;
@@ -64,7 +103,7 @@ export async function GET(request: NextRequest) {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `${disposition}; filename="cv.pdf"`,
+        "Content-Disposition": `${disposition}; filename="${filename}"`,
         "Cache-Control": "no-store",
         "Content-Length": buffer.length.toString(),
       },

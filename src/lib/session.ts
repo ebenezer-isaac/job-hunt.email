@@ -418,6 +418,16 @@ export class SessionRepository {
       await this.releaseQuotaHold(userId, releaseHoldKey, id);
     }
 
+    try {
+      await this.deleteGenerationLogs(id, generationId);
+    } catch (error) {
+      this.logger.warn("Failed to delete generation logs during cleanup", {
+        sessionId: id,
+        generationId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     return result;
   }
 
@@ -485,6 +495,18 @@ export class SessionRepository {
         message: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  private async deleteGenerationLogs(sessionId: string, generationId: string): Promise<void> {
+    const runRef = this.db.collection(collectionName).doc(sessionId).collection("generationLogs").doc(generationId);
+    const entries = await runRef.collection("entries").listDocuments();
+    if (entries.length) {
+      const batch = this.db.batch();
+      entries.forEach((entry) => batch.delete(entry));
+      await batch.commit();
+    }
+    await runRef.delete();
+    this.logger.step("Deleted generation log subcollection", { sessionId, generationId });
   }
 
   private sanitizeMetadataForPersistence(

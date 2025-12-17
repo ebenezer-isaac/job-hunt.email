@@ -53,7 +53,7 @@ const serverSchema = zod_1.z.object({
     GEMINI_API_KEY: zod_1.z.string().min(1, "GEMINI_API_KEY is required"),
     APOLLO_API_KEY: zod_1.z.string().min(1, "APOLLO_API_KEY is required"),
     GEMINI_PRO_MODEL: zod_1.z.string().default("gemini-2.5-pro"),
-    GEMINI_FLASH_MODEL: zod_1.z.string().default("gemini-2.5-flash"),
+    GEMINI_FLASH_MODEL: zod_1.z.string().default("gemini-2.5-flash-lite"),
     AI_MAX_RETRIES: zod_1.z.coerce.number().int().min(1).default(5),
     AI_INITIAL_RETRY_DELAY: zod_1.z.coerce.number().int().min(1000).default(5000),
     TARGET_PAGE_COUNT: zod_1.z.coerce.number().int().min(1).default(2),

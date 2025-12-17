@@ -27,5 +27,5 @@ export type WorkflowParams = {
   userDisplayName?: string | null;
   emit: EmitFn;
   signal?: AbortSignal;
-  log?: (entry: { content: string; level?: "info" | "success" | "error" }) => void;
+  log?: (entry: { content: string; level?: "info" | "success" | "warning" | "error" }) => void;
 };

@@ -86,13 +86,23 @@ export async function runGenerationWorkflow({ parsed, userId, userDisplayName, e
       ? `Detected contact emails: ${parsedEmails.join(", ")}`
       : "No validated contact emails detected — using fallback addresses.",
   );
+  void log?.({ content: "Gathered context and contacts", level: "info" });
+  await emit("Synthesizing research brief...");
   await emit("Generating tailored CV...");
-  void log?.({ content: "Generating CV", level: "info" });
+  void log?.({ content: "Started research and CV generation", level: "info" });
   const researchBrief = await synthesizeResearchBrief({ parsed, emit, signal, logger: actionLogger });
+  void log?.({ content: "Research brief ready", level: "info" });
 
-  const { cvPersistence, changeSummary } = await generateCvAndSummary({
+  const {
+    cvPersistence,
+    changeSummary,
+    status: cvStatus,
+    message: cvMessage,
+    errorLog: cvErrorLog,
+    errorLineNumbers: cvErrorLineNumbers,
+    errors: cvErrors,
+  } = await generateCvAndSummary({
     parsed,
-    userId,
     userDisplayName,
     researchBrief,
     emit,
@@ -100,10 +110,14 @@ export async function runGenerationWorkflow({ parsed, userId, userDisplayName, e
     modelRetryNotifier,
     logger: actionLogger,
   });
-  void log?.({ content: "CV generated", level: "success" });
+  const cvLogContent = cvStatus === "success"
+    ? "CV generated"
+    : cvMessage ?? "CV LaTeX PDF compilation error";
+  void log?.({ content: cvLogContent, level: cvStatus === "success" ? "success" : "warning" });
 
   assertNotAborted(signal);
   await enrichContactData(parsed, emit);
+  void log?.({ content: "Enriched contact data", level: "info" });
   includePrimaryContactEmail(parsed, parsedEmails);
   const contactIntelSummary = await maybeBuildContactIntelSummary({
     parsed,
@@ -115,6 +129,7 @@ export async function runGenerationWorkflow({ parsed, userId, userDisplayName, e
 
   let coverLetterArtifact: StoredArtifact | null = null;
   if (shouldGenerateCoverLetter) {
+    void log?.({ content: "Generating cover letter", level: "info" });
     coverLetterArtifact = await maybeGenerateCoverLetterArtifact({
       parsed,
       userId,
@@ -132,6 +147,7 @@ export async function runGenerationWorkflow({ parsed, userId, userDisplayName, e
 
   let coldEmailArtifact: StoredArtifact | null = null;
   if (shouldGenerateColdEmail) {
+    void log?.({ content: "Generating cold email", level: "info" });
     coldEmailArtifact = await maybeGenerateColdEmailArtifact({
       parsed,
       userId,
@@ -158,11 +174,17 @@ export async function runGenerationWorkflow({ parsed, userId, userDisplayName, e
     changeSummary,
     coverLetterArtifact,
     coldEmailArtifact,
+    userDisplayName,
+    cvStatus,
+    cvMessage,
+    cvErrorLog,
+    cvErrorLineNumbers,
+    cvErrors,
   });
 
   assertNotAborted(signal);
   await emit(JSON.stringify(artifactsPayload));
-  void log?.({ content: "Generation completed", level: "success" });
+  void log?.({ content: "Artifacts stored and generation completed", level: "success" });
   return {
     artifactsPayload,
     generatedFiles,

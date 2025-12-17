@@ -14,6 +14,11 @@ async function persistSessionSuccess(
   coldEmail?: { content?: string; subject?: string; body?: string; toAddress?: string },
   cvPageCount?: number | null,
   cvChangeSummary?: string | null,
+  cvStatus: "success" | "failed" = "success",
+  cvMessage?: string | null,
+  cvErrorLog?: string | null,
+  cvErrorLineNumbers?: number[] | null,
+  cvErrors?: Array<{ message: string; lineNumbers?: number[] }> | null,
 ) {
   const now = new Date().toISOString();
   const maxGenerations = 6;
@@ -69,7 +74,11 @@ async function persistSessionSuccess(
           generationId: parsed.generationId,
           content: cvFullLatex ?? cvPreview ?? "",
           pageCount: cvPageCount ?? undefined,
-          status: "success",
+          status: cvStatus,
+          message: cvMessage ?? undefined,
+          errorLog: cvErrorLog ?? undefined,
+          errorLineNumbers: cvErrorLineNumbers ?? undefined,
+          errors: cvErrors ?? undefined,
           createdAt: now,
         }),
         coverLetterGenerations: coverLetter?.content
@@ -93,7 +102,28 @@ async function persistSessionSuccess(
   );
 }
 
-async function persistSessionFailure(sessionId: string, userId: string) {
+type FailureMetadata = {
+  generationId?: string;
+  message?: string;
+};
+
+async function persistSessionFailure(sessionId: string, userId: string, failure?: FailureMetadata) {
+  const existingSession = await sessionRepository.getSession(sessionId);
+  const existingMetadata = existingSession?.metadata ?? {};
+  const existingCvGenerations = existingMetadata.cvGenerations as Array<{ generationId: string } & Record<string, unknown>> | undefined;
+  const now = new Date().toISOString();
+
+  const upsertGeneration = <T extends { generationId: string }>(existing: Array<T> | undefined, entry: T): Array<T> => {
+    const list = Array.isArray(existing) ? [...existing] : [];
+    const idx = list.findIndex((item) => item.generationId === entry.generationId);
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], ...entry };
+    } else {
+      list.push(entry);
+    }
+    return list.slice(-6);
+  };
+
   await sessionRepository
     .updateSession(
       sessionId,
@@ -102,8 +132,19 @@ async function persistSessionFailure(sessionId: string, userId: string) {
         processingStartedAt: null,
         processingDeadline: null,
         metadata: sanitizeFirestoreMap({
+          ...existingMetadata,
           activeHoldKey: null,
           processingHoldStartedAt: null,
+          lastGenerationId: failure?.generationId ?? existingMetadata.lastGenerationId,
+          cvGenerations:
+            failure?.generationId
+              ? upsertGeneration(existingCvGenerations, {
+                  generationId: failure.generationId,
+                  status: "failed",
+                  message: failure.message?.slice(0, 500) || undefined,
+                  createdAt: now,
+                })
+              : existingCvGenerations,
         }),
       },
       userId,

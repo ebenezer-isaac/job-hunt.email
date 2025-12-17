@@ -1,7 +1,6 @@
-import { randomUUID } from "node:crypto";
-
+import { getDb } from "@/lib/firebase-admin";
 import { createDebugLogger } from "@/lib/debug-logger";
-import { sessionRepository, type SessionRecord } from "@/lib/session";
+import { sessionRepository } from "@/lib/session";
 
 type LogLevel = "info" | "success" | "warning" | "error";
 
@@ -12,55 +11,35 @@ export type GenerationLogEntry = {
   level: LogLevel;
 };
 
-export type GenerationLogRecord = {
-  generationId: string;
-  index: number;
-  status: "pending" | "in-progress" | "completed" | "failed";
-  startedAt: string;
-  lastUpdatedAt: string;
-  logs: GenerationLogEntry[];
-  summary?: string;
-};
-
+const RUN_COLLECTION = "generationLogs";
+const ENTRIES_COLLECTION = "entries";
 const logger = createDebugLogger("generation-logs");
+const db = getDb();
 
-function ensureLogs(session: SessionRecord): GenerationLogRecord[] {
-  const raw = session.metadata?.generationLogs;
-  if (Array.isArray(raw)) {
-    return raw as GenerationLogRecord[];
-  }
-  return [];
-}
-
-function writeLogs(sessionId: string, userId: string, logs: GenerationLogRecord[]): Promise<SessionRecord> {
-  return sessionRepository.updateSession(
-    sessionId,
-    {
-      metadata: {
-        generationLogs: logs,
-      },
-    },
-    userId,
-  );
-}
-
-export async function startGenerationLog(sessionId: string, userId: string, generationId: string): Promise<void> {
+async function assertSessionOwnership(sessionId: string, userId: string) {
   const session = await sessionRepository.getSession(sessionId);
   if (!session || session.userId !== userId) {
     throw new Error("Session not found or access denied");
   }
-  const existing = ensureLogs(session).filter((entry) => entry.generationId !== generationId);
-  const index = existing.length + 1;
+  return session;
+}
+
+export async function startGenerationLog(sessionId: string, userId: string, generationId: string): Promise<void> {
+  await assertSessionOwnership(sessionId, userId);
+  const runsRef = db.collection("sessions").doc(sessionId).collection(RUN_COLLECTION);
+  const existingSnap = await runsRef.get();
+  const existingDoc = await runsRef.doc(generationId).get();
   const now = new Date().toISOString();
-  const record: GenerationLogRecord = {
+  const index = existingDoc.exists ? (existingDoc.data()?.index as number | undefined) ?? existingSnap.size : existingSnap.size + 1;
+
+  await runsRef.doc(generationId).set({
     generationId,
     index,
     status: "in-progress",
-    startedAt: now,
+    startedAt: existingDoc.exists ? existingDoc.data()?.startedAt ?? now : now,
     lastUpdatedAt: now,
-    logs: [],
-  };
-  await writeLogs(sessionId, userId, [...existing, record]);
+  }, { merge: true });
+
   logger.step("Started generation log", { sessionId, generationId, index });
 }
 
@@ -70,25 +49,22 @@ export async function appendGenerationLog(
   generationId: string,
   entry: { content: string; level?: LogLevel },
 ): Promise<void> {
-  const session = await sessionRepository.getSession(sessionId);
-  if (!session || session.userId !== userId) {
-    throw new Error("Session not found or access denied");
-  }
-  const logs = ensureLogs(session);
-  const target = logs.find((item) => item.generationId === generationId);
-  if (!target) {
+  await assertSessionOwnership(sessionId, userId);
+  const runRef = db.collection("sessions").doc(sessionId).collection(RUN_COLLECTION).doc(generationId);
+  const runSnap = await runRef.get();
+  if (!runSnap.exists) {
     logger.warn("appendGenerationLog called without existing record", { sessionId, generationId });
     return;
   }
   const now = new Date().toISOString();
-  target.logs.push({
-    id: randomUUID(),
+  const entryRef = runRef.collection(ENTRIES_COLLECTION).doc();
+  await entryRef.set({
+    id: entryRef.id,
     content: entry.content,
     timestamp: now,
     level: entry.level ?? "info",
   });
-  target.lastUpdatedAt = now;
-  await writeLogs(sessionId, userId, logs);
+  await runRef.set({ lastUpdatedAt: now }, { merge: true });
 }
 
 export async function finalizeGenerationLog(
@@ -98,22 +74,18 @@ export async function finalizeGenerationLog(
   status: "completed" | "failed",
   summary?: string,
 ): Promise<void> {
-  const session = await sessionRepository.getSession(sessionId);
-  if (!session || session.userId !== userId) {
-    throw new Error("Session not found or access denied");
-  }
-  const logs = ensureLogs(session);
-  const target = logs.find((item) => item.generationId === generationId);
-  if (!target) {
+  await assertSessionOwnership(sessionId, userId);
+  const runRef = db.collection("sessions").doc(sessionId).collection(RUN_COLLECTION).doc(generationId);
+  const runSnap = await runRef.get();
+  if (!runSnap.exists) {
     logger.warn("finalizeGenerationLog called without existing record", { sessionId, generationId });
     return;
   }
   const now = new Date().toISOString();
-  target.status = status;
-  target.lastUpdatedAt = now;
-  if (summary) {
-    target.summary = summary;
-  }
-  await writeLogs(sessionId, userId, logs);
+  await runRef.set({
+    status,
+    lastUpdatedAt: now,
+    summary: summary ?? runSnap.data()?.summary,
+  }, { merge: true });
   logger.step("Finalized generation log", { sessionId, generationId, status });
 }

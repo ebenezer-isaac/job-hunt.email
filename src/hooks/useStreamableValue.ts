@@ -22,6 +22,9 @@ export type ArtifactPayload = {
     status?: string;
     message?: string;
     createdAt?: string;
+    errorLog?: string;
+    errorLineNumbers?: number[];
+    errors?: Array<{ message: string; lineNumbers?: number[] }>;
   }>;
 };
 

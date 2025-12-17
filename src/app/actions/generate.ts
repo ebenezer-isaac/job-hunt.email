@@ -103,14 +103,14 @@ export async function generateDocumentsAction(
     let holdReleased = false;
     try {
       const tokens = await requireServerAuthTokens();
-      const decodedToken = tokens.decodedToken as Record<string, unknown>;
-      userId = tokens.decodedToken.uid;
+      const decodedToken = tokens.decodedToken as Record<string, unknown> & { uid?: string; name?: string; displayName?: string };
+      userId = decodedToken.uid ?? "";
       if (!userId) {
         throw new Error("Authenticated user is missing uid");
       }
       const userDisplayName =
-        (typeof decodedToken.name === "string" && decodedToken.name) ||
-        (typeof decodedToken.displayName === "string" ? decodedToken.displayName : undefined);
+        (typeof decodedToken.name === "string" && decodedToken.name.trim().length ? decodedToken.name : null) ??
+        (typeof decodedToken.displayName === "string" && decodedToken.displayName.trim().length ? decodedToken.displayName : null);
       const processingStartedAt = new Date();
       const processingDeadline = new Date(processingStartedAt.getTime() + PROCESSING_TIMEOUT_MS);
       try {
@@ -170,6 +170,10 @@ export async function generateDocumentsAction(
         try {
           sessionLogger.step("Starting generation workflow", { sessionId: parsed.sessionId });
           await startGenerationLog(parsed.sessionId, userId, parsed.generationId);
+          void appendGenerationLog(parsed.sessionId, userId, parsed.generationId, {
+            content: 'Queued generation request. Preparing context and enforcing quota.',
+            level: 'info',
+          });
           const result = await runGenerationWorkflow({
             parsed,
             userId,
@@ -181,6 +185,11 @@ export async function generateDocumentsAction(
             },
           });
           clearTimeout(timeoutId);
+          void appendGenerationLog(parsed.sessionId, userId, parsed.generationId, {
+            content: 'Artifacts saved. Finalizing session metadata...',
+            level: 'info',
+          });
+          const latestVersion = result.cvArtifact.payload.versions?.[0];
           await persistence.persistSessionSuccess(
             parsed,
             userId,
@@ -192,6 +201,11 @@ export async function generateDocumentsAction(
             result.coldEmailArtifact?.payload,
             result.cvArtifact.payload.pageCount,
             result.cvArtifact.payload.changeSummary ?? null,
+            latestVersion?.status === "failed" ? "failed" : "success",
+            latestVersion?.message ?? null,
+            latestVersion?.errorLog ?? null,
+            latestVersion?.errorLineNumbers ?? null,
+            latestVersion?.errors ?? null,
           );
 
           scheduleChatLog({
@@ -249,6 +263,15 @@ export async function generateDocumentsAction(
             }).catch((logError) => sessionLogger.warn('Failed to append overload warning log', { error: String(logError) }));
           }
 
+          void appendGenerationLog(parsed.sessionId, userId, parsed.generationId, {
+            content: timedOut
+              ? 'Generation timed out. Cleaning up resources.'
+              : aborted
+                ? 'Generation cancelled by client. Cleaning up resources.'
+                : `Generation failed: ${internalMessage}`,
+            level: timedOut || aborted ? 'warning' : 'error',
+          }).catch((logError) => sessionLogger.warn('Failed to append failure log', { error: String(logError) }));
+
           try {
             await finalizeGenerationLog(parsed.sessionId, userId, parsed.generationId, "failed", internalMessage);
           } catch (logError) {
@@ -264,7 +287,10 @@ export async function generateDocumentsAction(
           });
 
           await emit(userMessage);
-          await persistence.persistSessionFailure(parsed.sessionId, userId);
+          await persistence.persistSessionFailure(parsed.sessionId, userId, {
+            generationId: parsed.generationId,
+            message: internalMessage,
+          });
           await quotaService.releaseHold({ uid: userId, sessionId: holdKey, refund: true }).catch((releaseError) => {
             sessionLogger.warn('Failed to release quota hold', {
               sessionId: parsed.sessionId,
@@ -311,7 +337,10 @@ export async function generateDocumentsAction(
       }
 
       if (userId) {
-        await persistence.persistSessionFailure(parsed.sessionId, userId);
+        await persistence.persistSessionFailure(parsed.sessionId, userId, {
+          generationId: parsed.generationId,
+          message: internalMessage,
+        });
         scheduleChatLog({
           sessionId: parsed.sessionId,
           userId,

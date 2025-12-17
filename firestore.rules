@@ -10,6 +10,19 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Allow users to read their generation logs and log entries within their sessions.
+    match /sessions/{sessionId}/generationLogs/{runId} {
+      allow read: if signedIn() &&
+        request.auth.uid == get(/databases/$(database)/documents/sessions/$(sessionId)).data.userId;
+      allow write: if false;
+
+      match /entries/{entryId} {
+        allow read: if signedIn() &&
+          request.auth.uid == get(/databases/$(database)/documents/sessions/$(sessionId)).data.userId;
+        allow write: if false;
+      }
+    }
+
     match /userProfiles/{userId} {
       allow read: if signedIn() && request.auth.uid == userId;
       allow write: if false;

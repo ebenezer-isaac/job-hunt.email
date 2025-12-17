@@ -36,6 +36,23 @@ export type CompileResult = {
   error?: Error;
 };
 
+export type LatexLogError = {
+  message: string;
+  lineNumbers?: number[];
+};
+
+export class LatexCompileError extends Error {
+  constructor(
+    message: string,
+    public readonly logExcerpt?: string,
+    public readonly lineNumbers?: number[],
+    public readonly errors?: LatexLogError[],
+  ) {
+    super(message);
+    this.name = "LatexCompileError";
+  }
+}
+
 const forbiddenLatexPatterns: ReadonlyArray<{ pattern: RegExp; reason: string }> = [
   { pattern: /\\write18\b/i, reason: "\\write18 is not permitted" },
   { pattern: /\\usepackage\s*\{[^}]*shellesc[^}]*\}/i, reason: "shellesc package is not allowed" },
@@ -230,7 +247,7 @@ export class DocumentService {
   private async runLatexPass(cwd: string, pass: number): Promise<void> {
     this.traceRequestContext("run-latex-pass", { pass });
     this.logger.step("Running pdflatex", { cwd, pass, cmd: this.latexCmd });
-    const args = ["-interaction=nonstopmode", "-halt-on-error", "-no-shell-escape", "main.tex"];
+    const args = ["-interaction=nonstopmode", "-halt-on-error", "-file-line-error", "-no-shell-escape", "main.tex"];
 
     await new Promise<void>((resolve, reject) => {
       const child = spawn(this.latexCmd, args, { cwd });
@@ -262,7 +279,12 @@ export class DocumentService {
           const stdoutBuffer = Buffer.concat(stdoutChunks);
           const logPath = path.join(cwd, "main.log");
           const logContent = await this.safeReadFile(logPath);
-          const lineNumbers = logContent ? this.extractLatexErrorLines(logContent) : [];
+          const parsedErrors = logContent ? this.extractLatexErrors(logContent) : [];
+          const lineNumbers = parsedErrors.length
+            ? Array.from(new Set(parsedErrors.flatMap((item) => item.lineNumbers ?? [])))
+            : logContent
+              ? this.extractLatexErrorLines(logContent)
+              : [];
 
           this.logger.error("pdflatex pass failed", {
             pass,
@@ -276,7 +298,15 @@ export class DocumentService {
             errorLineNumbers: lineNumbers,
           });
 
-          reject(new Error(this.buildLatexFailureMessage(code, lineNumbers)));
+          const logExcerpt = logContent ? this.buildLogExcerpt(logContent) : null;
+          reject(
+            new LatexCompileError(
+              this.buildLatexFailureMessage(code, lineNumbers),
+              logExcerpt ?? undefined,
+              lineNumbers,
+              parsedErrors.length ? parsedErrors : undefined,
+            ),
+          );
         }
       });
     });
@@ -342,5 +372,40 @@ export class DocumentService {
       return base;
     }
     return `${base}. Check LaTeX content near lines ${lineNumbers.join(", ")}`;
+  }
+
+  private buildLogExcerpt(logContent: string, maxLines = 40): string {
+    const lines = logContent.split(/\r?\n/);
+    const tail = lines.slice(-maxLines);
+    return tail.join("\n");
+  }
+
+  private extractLatexErrors(logContent: string, max = 12): LatexLogError[] {
+    const lines = logContent.split(/\r?\n/);
+    const errors: LatexLogError[] = [];
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      if (!line.trim().startsWith("!")) {
+        continue;
+      }
+      const message = line.replace(/^!\s*/, "").trim();
+      const context: string[] = [];
+      let j = i + 1;
+      while (j < lines.length && lines[j].trim().length && !lines[j].trim().startsWith("!")) {
+        context.push(lines[j].trim());
+        j += 1;
+      }
+      const lineMatches = context
+        .map((ctx) => ctx.match(/l\.(\d+)/i))
+        .filter(Boolean)
+        .map((match) => (match ? Number(match[1]) : NaN))
+        .filter((value) => Number.isFinite(value)) as number[];
+      const mergedMessage = context.length ? `${message} ${context.join(" ")}`.trim() : message;
+      errors.push({ message: mergedMessage, lineNumbers: lineMatches.length ? lineMatches : undefined });
+      if (errors.length >= max) {
+        break;
+      }
+    }
+    return errors;
   }
 }

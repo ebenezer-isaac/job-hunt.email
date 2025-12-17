@@ -8,6 +8,7 @@ import type { GenerationLogsPanelProps, GenerationRun } from "./types";
 
 function PanelContents({
   generations,
+  isLoading,
   expandedId,
   onUserToggle,
   onClose,
@@ -34,14 +35,16 @@ function PanelContents({
         </button>
       </div>
       <div className="mt-4 flex-1 overflow-y-auto pr-1">
-        {ordered.length === 0 ? (
+        {isLoading ? (
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">Loading generation activity…</p>
+        ) : ordered.length === 0 ? (
           <p className="text-sm text-zinc-500 dark:text-zinc-400">No generations yet. Run a request to inspect logs.</p>
         ) : (
           <ul className="space-y-3">
             {ordered.map((generation: GenerationRun) => {
               const isExpanded = expandedId === generation.id;
               const canDelete = generation.hasStableId;
-              const deleting = generation.generationId ? deletingGenerationId === generation.generationId : false;
+              const deleting = deletingGenerationId === generation.generationId;
               return (
                 <GenerationListItem
                   key={generation.id}

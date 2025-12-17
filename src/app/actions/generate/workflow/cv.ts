@@ -1,6 +1,7 @@
 import { aiService } from "@/lib/ai/service";
 import { normalizeLatexSource } from "@/lib/latex-normalizer";
 import type { ResearchBrief } from "@/lib/ai/llama/context-engine";
+import { LatexCompileError, type LatexLogError } from "@/lib/document-service";
 
 import type { ParsedForm } from "../form";
 import { persistCvArtifact } from "../storage";
@@ -11,7 +12,6 @@ export type CvPersistence = Awaited<ReturnType<typeof persistCvArtifact>>;
 
 type CvGenerationParams = {
   parsed: ParsedForm;
-  userId: string;
   userDisplayName?: string | null;
   researchBrief: ResearchBrief | null;
   emit: EmitFn;
@@ -22,14 +22,21 @@ type CvGenerationParams = {
 
 export async function generateCvAndSummary({
   parsed,
-  userId,
   userDisplayName,
   researchBrief,
   emit,
   signal,
   modelRetryNotifier,
   logger,
-}: CvGenerationParams): Promise<{ cvPersistence: CvPersistence; changeSummary: string | null }> {
+}: CvGenerationParams): Promise<{
+  cvPersistence: CvPersistence;
+  changeSummary: string | null;
+  status: "success" | "failed";
+  message?: string;
+  errorLog?: string;
+  errorLineNumbers?: number[];
+  errors?: LatexLogError[];
+}> {
   assertNotAborted(signal);
   const cvResponse = await aiService.generateCVAdvanced({
     jobDescription: parsed.jobDescription,
@@ -39,6 +46,7 @@ export async function generateCvAndSummary({
     companyName: parsed.companyName,
     jobTitle: parsed.jobTitle,
     researchBrief: researchBrief ?? undefined,
+    userDisplayName: userDisplayName ?? undefined,
   }, { onRetry: modelRetryNotifier });
 
   const { output: normalizedCv, changes: latexNormalizationChanges } = normalizeLatexSource(cvResponse);
@@ -51,12 +59,23 @@ export async function generateCvAndSummary({
 
   let cvPersistence: CvPersistence;
   try {
-    cvPersistence = await persistCvArtifact(normalizedCv, parsed, userId, userDisplayName);
+    cvPersistence = await persistCvArtifact(normalizedCv, parsed, userDisplayName ?? undefined);
+    await emit("CV PDF compiled successfully.");
   } catch (compileError) {
-    await emit(describeCvCompilationError(compileError));
-    throw compileError;
+    const message = describeCvCompilationError(compileError);
+    const latexError = compileError instanceof LatexCompileError ? compileError : null;
+    await emit(message);
+    logger.warn("CV compilation failed", { sessionId: parsed.sessionId, error: message });
+    return {
+      cvPersistence: { cv: normalizedCv, result: { pageCount: null } },
+      changeSummary: null,
+      status: "failed",
+      message,
+      errorLog: latexError?.logExcerpt,
+      errorLineNumbers: latexError?.lineNumbers,
+      errors: latexError?.errors,
+    };
   }
-  await emit("CV PDF compiled successfully.");
 
   let changeSummary: string | null = null;
   try {
@@ -70,5 +89,5 @@ export async function generateCvAndSummary({
     await emit(`Change summary unavailable: ${reason}`);
   }
 
-  return { cvPersistence, changeSummary };
+  return { cvPersistence, changeSummary, status: "success" };
 }

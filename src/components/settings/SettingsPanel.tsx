@@ -17,11 +17,6 @@ const TEXT_DOCS: Record<DocKey, { label: string; helper: string; placeholder: st
     helper: "Provide supporting plain text or Markdown context.",
     placeholder: "Paste supporting context here",
   },
-  cover_letter: {
-    label: "Cover Letter Draft",
-    helper: "Editable draft; auto-saves as you type.",
-    placeholder: "Write or paste your cover letter draft here",
-  },
 };
 
 const STRATEGY_DOCS: Record<StrategyKey, { label: string; helper: string; readOnly?: boolean }> = {
@@ -47,7 +42,7 @@ const STRATEGY_DOCS: Record<StrategyKey, { label: string; helper: string; readOn
   },
 };
 
-type DocKey = "original_cv" | "extensive_cv" | "cover_letter";
+type DocKey = "original_cv" | "extensive_cv";
 type StrategyKey = "cv_strategy" | "cover_letter_strategy" | "cold_email_strategy" | "recon_strategy";
 type SourceDocKey = DocKey | StrategyKey;
 type StoreDocKey = keyof SessionStoreState["sourceDocuments"];
@@ -55,7 +50,6 @@ type StoreDocKey = keyof SessionStoreState["sourceDocuments"];
 const STORE_KEY_MAP: Record<SourceDocKey, StoreDocKey> = {
   original_cv: "originalCV",
   extensive_cv: "extensiveCV",
-  cover_letter: "coverLetter",
   cv_strategy: "cvStrategy",
   cover_letter_strategy: "coverLetterStrategy",
   cold_email_strategy: "coldEmailStrategy",
@@ -74,7 +68,6 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [saveState, setSaveState] = useState<Record<SourceDocKey, SaveState>>({
     original_cv: "idle",
     extensive_cv: "idle",
-    cover_letter: "idle",
     cv_strategy: "global",
     cover_letter_strategy: "global",
     cold_email_strategy: "global",
@@ -135,8 +128,6 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   return sourceDocuments.originalCV;
                 case "extensive_cv":
                   return sourceDocuments.extensiveCV;
-                case "cover_letter":
-                  return sourceDocuments.coverLetter;
                 default:
                   return "";
               }

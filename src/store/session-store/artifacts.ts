@@ -95,7 +95,7 @@ export function buildArtifactsFromSession(session?: ClientSession | null): Gener
   const artifacts: GenerationArtifacts = {};
 
   // CV artifacts can exist without generatedFiles; prefer metadata-derived LaTeX and build a render URL.
-  const cvVersions = cvGenerations
+  const cvVersionsUnsorted = cvGenerations
     .map((entry) => ({
       generationId: typeof entry.generationId === "string" ? entry.generationId : "",
       content: unwrapRedacted(typeof entry.content === "string" ? entry.content : "") ?? "",
@@ -103,26 +103,69 @@ export function buildArtifactsFromSession(session?: ClientSession | null): Gener
       status: typeof entry.status === "string" ? entry.status : undefined,
       message: typeof entry.message === "string" ? entry.message : undefined,
       createdAt: typeof entry.createdAt === "string" ? entry.createdAt : undefined,
+      errorLog: typeof entry.errorLog === "string" ? entry.errorLog : undefined,
+      errorLineNumbers: Array.isArray(entry.errorLineNumbers)
+        ? (entry.errorLineNumbers as Array<unknown>).filter((value): value is number => typeof value === "number")
+        : undefined,
+      errors: Array.isArray(entry.errors)
+        ? (entry.errors as Array<unknown>)
+            .map((value) => (value && typeof value === "object" ? (value as Record<string, unknown>) : null))
+            .filter((value): value is { message: string; lineNumbers?: number[] } => {
+              if (!value || typeof value.message !== "string") {
+                return false;
+              }
+              const linesRaw = value.lineNumbers;
+              if (Array.isArray(linesRaw)) {
+                const allNumbers = linesRaw.every((item: unknown): item is number => typeof item === "number");
+                if (!allNumbers) {
+                  return false;
+                }
+              }
+              return true;
+            })
+        : undefined,
     }))
-    .filter((entry) => entry.generationId && entry.content);
-  const latestCv = cvVersions[cvVersions.length - 1];
+    .filter((entry) => entry.generationId && (entry.content || entry.status));
+
+  const cvVersions = cvVersionsUnsorted
+    .sort((a, b) => {
+      const aTime = a.createdAt ?? "";
+      const bTime = b.createdAt ?? "";
+      if (aTime && bTime) return aTime.localeCompare(bTime);
+      if (aTime) return 1;
+      if (bTime) return -1;
+      return a.generationId.localeCompare(b.generationId);
+    })
+    .reduce((acc, entry) => {
+      if (acc.has(entry.generationId)) {
+        acc.delete(entry.generationId);
+      }
+      acc.set(entry.generationId, entry);
+      return acc;
+    }, new Map<string, typeof cvVersionsUnsorted[number]>());
+
+  const cvVersionsList = Array.from(cvVersions.values());
+  const latestCv = cvVersionsList[cvVersionsList.length - 1];
   const cvContent = latestCv?.content ?? cvFullLatex ?? previews.cv ?? "";
-  if (cvContent) {
-    const renderBase = `/api/render-pdf?sessionId=${encodeURIComponent(session.id)}&artifact=cv${latestCv?.generationId ? `&generationId=${encodeURIComponent(latestCv.generationId)}` : ""}`;
+  if (cvContent || latestCv?.status) {
+    const hasRenderablePdf = latestCv?.status !== "failed";
+    const renderBase = hasRenderablePdf
+      ? `/api/render-pdf?sessionId=${encodeURIComponent(session.id)}&artifact=cv${latestCv?.generationId ? `&generationId=${encodeURIComponent(latestCv.generationId)}` : ""}`
+      : null;
     artifacts.cv = {
       content: cvContent,
-      downloadUrl: `${renderBase}&disposition=attachment`,
-      storageKey: "inline-render",
-      mimeType: "application/pdf",
+      downloadUrl: hasRenderablePdf && renderBase ? `${renderBase}&disposition=attachment` : "",
+      storageKey: hasRenderablePdf ? "inline-render" : "",
+      mimeType: hasRenderablePdf ? "application/pdf" : "application/x-latex",
       metadata: files.cv ? { label: files.cv.label } : undefined,
       pageCount: readNumber(session.metadata, "cvPageCount") ?? latestCv?.pageCount ?? null,
       generationId: latestCv?.generationId,
-      versions: cvVersions,
+      versions: cvVersionsList,
       changeSummary: previews.cvChangeSummary,
     };
   }
   if (files.coverLetter) {
-    const coverLetterVersions = coverLetterGenerations
+    const coverLetterVersionsUnsorted = coverLetterGenerations
       .map((entry) => ({
         generationId: typeof entry.generationId === "string" ? entry.generationId : "",
         content: unwrapRedacted(typeof entry.content === "string" ? entry.content : "") ?? "",
@@ -131,7 +174,25 @@ export function buildArtifactsFromSession(session?: ClientSession | null): Gener
         createdAt: typeof entry.createdAt === "string" ? entry.createdAt : undefined,
       }))
       .filter((entry) => entry.generationId && entry.content);
-    const latestCover = coverLetterVersions[coverLetterVersions.length - 1];
+    const coverLetterVersions = coverLetterVersionsUnsorted
+      .sort((a, b) => {
+        const aTime = a.createdAt ?? "";
+        const bTime = b.createdAt ?? "";
+        if (aTime && bTime) return aTime.localeCompare(bTime);
+        if (aTime) return 1;
+        if (bTime) return -1;
+        return a.generationId.localeCompare(b.generationId);
+      })
+      .reduce((acc, entry) => {
+        if (acc.has(entry.generationId)) {
+          acc.delete(entry.generationId);
+        }
+        acc.set(entry.generationId, entry);
+        return acc;
+      }, new Map<string, typeof coverLetterVersionsUnsorted[number]>());
+
+    const coverLetterVersionsList = Array.from(coverLetterVersions.values());
+    const latestCover = coverLetterVersionsList[coverLetterVersionsList.length - 1];
     artifacts.coverLetter = {
       content: latestCover?.content ?? previews.coverLetter ?? "",
       downloadUrl: files.coverLetter.url,
@@ -139,7 +200,7 @@ export function buildArtifactsFromSession(session?: ClientSession | null): Gener
       mimeType: files.coverLetter.mimeType,
       metadata: { label: files.coverLetter.label },
       generationId: latestCover?.generationId,
-      versions: coverLetterVersions,
+      versions: coverLetterVersionsList,
     };
   }
   if (files.coldEmail) {

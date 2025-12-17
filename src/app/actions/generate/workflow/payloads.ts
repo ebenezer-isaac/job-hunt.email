@@ -10,6 +10,12 @@ type BuildPayloadParams = {
   changeSummary: string | null;
   coverLetterArtifact: StoredArtifact | null;
   coldEmailArtifact: StoredArtifact | null;
+  userDisplayName?: string | null;
+  cvStatus?: "success" | "failed";
+  cvMessage?: string;
+  cvErrorLog?: string;
+  cvErrorLineNumbers?: number[];
+  cvErrors?: Array<{ message: string; lineNumbers?: number[] }>;
 };
 
 export function buildArtifactsPayload({
@@ -18,33 +24,65 @@ export function buildArtifactsPayload({
   changeSummary,
   coverLetterArtifact,
   coldEmailArtifact,
+  userDisplayName,
+  cvStatus = "success",
+  cvMessage,
+  cvErrorLog,
+  cvErrorLineNumbers,
+  cvErrors,
 }: BuildPayloadParams): {
   artifactsPayload: GenerationArtifacts;
   generatedFiles: Record<string, StoredArtifact["generatedFile"]>;
   cvArtifact: StoredArtifact;
 } {
-  const renderBase = `/api/render-pdf?sessionId=${encodeURIComponent(parsed.sessionId)}&artifact=cv${parsed.generationId ? `&generationId=${encodeURIComponent(parsed.generationId)}` : ""}`;
+  const hasRenderableCv = cvStatus === "success";
+  const renderBase = hasRenderableCv
+    ? `/api/render-pdf?sessionId=${encodeURIComponent(parsed.sessionId)}&artifact=cv${parsed.generationId ? `&generationId=${encodeURIComponent(parsed.generationId)}` : ""}${userDisplayName ? `&candidate=${encodeURIComponent(userDisplayName)}` : ""}`
+    : null;
+
+  const cvPayload: StoredArtifact["payload"] = {
+    content: cvPersistence.cv,
+    downloadUrl: hasRenderableCv ? `${renderBase}&disposition=attachment` : "",
+    storageKey: hasRenderableCv ? "inline-render" : "",
+    mimeType: hasRenderableCv ? "application/pdf" : "application/x-latex",
+    pageCount: cvPersistence.result.pageCount,
+    changeSummary: changeSummary ?? undefined,
+    generationId: parsed.generationId,
+    metadata: {
+      ...(cvMessage ? { message: cvMessage } : {}),
+      ...(userDisplayName ? { candidateName: userDisplayName } : {}),
+    },
+    versions: [
+      {
+        generationId: parsed.generationId,
+        content: cvPersistence.cv,
+        pageCount: cvPersistence.result.pageCount,
+        status: cvStatus,
+        message: cvMessage,
+        createdAt: new Date().toISOString(),
+        errorLog: cvErrorLog,
+        errorLineNumbers: cvErrorLineNumbers,
+        errors: cvErrors,
+      },
+    ],
+  } as StoredArtifact["payload"];
 
   const cvArtifact: StoredArtifact = {
-    payload: {
-      content: cvPersistence.cv,
-      downloadUrl: `${renderBase}&disposition=attachment`,
-      storageKey: "inline-render",
-      mimeType: "application/pdf",
-      pageCount: cvPersistence.result.pageCount,
-      changeSummary: changeSummary ?? undefined,
-      generationId: parsed.generationId,
-    },
+    payload: cvPayload,
     generatedFile: {
       key: "inline-render",
-      url: `${renderBase}&disposition=attachment`,
+      url: hasRenderableCv && renderBase ? `${renderBase}&disposition=attachment` : "",
       label: "Tailored CV (PDF)",
       mimeType: "application/pdf",
     },
   };
 
-  const artifactsPayload: GenerationArtifacts = { cv: cvArtifact.payload };
-  const generatedFiles: Record<string, StoredArtifact["generatedFile"]> = { cv: cvArtifact.generatedFile };
+  const artifactsPayload: GenerationArtifacts = { cv: cvPayload };
+  const generatedFiles: Record<string, StoredArtifact["generatedFile"]> = hasRenderableCv
+    ? {
+        cv: cvArtifact.generatedFile,
+      }
+    : {};
 
   if (coverLetterArtifact) {
     artifactsPayload.coverLetter = {

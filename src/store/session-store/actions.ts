@@ -10,28 +10,31 @@ export function createSessionActions(
   return {
     setSessions: (sessions) => {
       set((state) => {
+        const generationBySession = { ...state.sessionGenerating };
         const merged = sessions.map((session) => {
           const existing = state.sessions.find((item) => item.id === session.id);
-          if (!existing) {
-            return session;
+          const mergedHistory = existing ? mergeChatHistories(session.chatHistory, existing.chatHistory) : session.chatHistory;
+          const snapshotGenerating = session.status === "processing";
+          const existingGenerating = generationBySession[session.id] ?? false;
+          const nextGenerating = snapshotGenerating || existingGenerating;
+          if (generationBySession[session.id] !== nextGenerating) {
+            generationBySession[session.id] = nextGenerating;
           }
-          const mergedHistory = mergeChatHistories(session.chatHistory, existing.chatHistory);
+          const normalizedSession = nextGenerating && session.status !== "processing"
+            ? { ...session, status: "processing" as const }
+            : session;
+
           return {
-            ...session,
+            ...normalizedSession,
             chatHistory: mergedHistory,
           };
         });
         const activeSessionId = state.currentSessionId;
         const activeSession = activeSessionId ? merged.find((item) => item.id === activeSessionId) : null;
         const artifactsBySession = { ...state.sessionArtifacts };
-        const generationBySession = { ...state.sessionGenerating };
 
         merged.forEach((session) => {
           artifactsBySession[session.id] = buildArtifactsFromSession(session);
-          const shouldGenerate = session.status === "processing";
-          if (generationBySession[session.id] !== shouldGenerate) {
-            generationBySession[session.id] = shouldGenerate;
-          }
         });
 
         const artifacts = activeSessionId ? artifactsBySession[activeSessionId] ?? null : null;

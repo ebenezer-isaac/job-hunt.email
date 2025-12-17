@@ -9,6 +9,7 @@ import { createOutreachTasks } from "./tasks/outreach-tasks";
 import { createResearchTasks } from "./tasks/research-tasks";
 import type {
   FixCVPageCountInput,
+  FixLatexErrorsAssistInput,
   GenerateCVAdvancedInput,
   GenerateCoverLetterInput,
   GenericColdEmailInput,
@@ -47,6 +48,10 @@ export class AIService {
 
   fixCVPageCount(input: FixCVPageCountInput, options?: { onRetry?: RetryHandler }) {
     return this.documents.fixCVPageCount(input, options);
+  }
+
+  fixLatexErrorsAssist(input: FixLatexErrorsAssistInput, options?: { onRetry?: RetryHandler }) {
+    return this.documents.fixLatexErrorsAssist(input, options);
   }
 
   generateCoverLetterAdvanced(input: GenerateCoverLetterInput, options?: { onRetry?: RetryHandler }) {

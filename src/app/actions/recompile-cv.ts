@@ -6,7 +6,7 @@ import { requireServerAuthTokens } from "@/lib/auth";
 import { env } from "@/env";
 import { sessionRepository } from "@/lib/session";
 import { getStorageProvider } from "@/lib/storage/types";
-import { DocumentService } from "@/lib/document-service";
+import { DocumentService, LatexCompileError, type LatexLogError } from "@/lib/document-service";
 import { createDebugLogger } from "@/lib/debug-logger";
 import { sanitizeFirestoreMap } from "./generate/object-utils";
 import { serializeSession } from "@/lib/serializers/session";
@@ -37,7 +37,25 @@ type CvGeneration = {
   createdAt?: string;
 };
 
-export async function recompileCvAction(rawInput: unknown) {
+type RecompileCvSuccess = {
+  ok: true;
+  session: ReturnType<typeof serializeSession>;
+  pageCount: number | null;
+  downloadUrl: string;
+  storageKey: string;
+};
+
+type RecompileCvFailure = {
+  ok: false;
+  errorMessage: string;
+  errorLog?: string;
+  errorLineNumbers?: number[];
+  errors?: LatexLogError[];
+};
+
+export type RecompileCvResponse = RecompileCvSuccess | RecompileCvFailure;
+
+export async function recompileCvAction(rawInput: unknown): Promise<RecompileCvResponse> {
   const { sessionId, latex, generationId } = inputSchema.parse(rawInput);
   const tokens = await requireServerAuthTokens();
   const userId = tokens.decodedToken.uid;
@@ -53,7 +71,27 @@ export async function recompileCvAction(rawInput: unknown) {
   }
 
   const service = await getDocumentService();
-  const compile = await service.renderLatexEphemeral(latex);
+  let compile;
+  try {
+    compile = await service.renderLatexEphemeral(latex);
+  } catch (error) {
+    const latexError = error instanceof LatexCompileError ? error : null;
+    const message = latexError?.message ?? (error instanceof Error ? error.message : "Failed to compile LaTeX");
+    logger.error("Recompile failed", {
+      sessionId,
+      userId,
+      message,
+      lineNumbers: latexError?.lineNumbers,
+    });
+
+    return {
+      ok: false,
+      errorMessage: message,
+      errorLog: latexError?.logExcerpt,
+      errorLineNumbers: latexError?.lineNumbers,
+      errors: latexError?.errors,
+    };
+  }
   const updatedFiles = { ...session.generatedFiles };
 
   const existingPreviews =
@@ -112,6 +150,7 @@ export async function recompileCvAction(rawInput: unknown) {
 
   const serialized = serializeSession(updatedSession);
   return {
+    ok: true,
     session: serialized,
     pageCount: compile.pageCount,
     downloadUrl: `/api/render-pdf?sessionId=${encodeURIComponent(sessionId)}&artifact=cv${generationId ? `&generationId=${encodeURIComponent(generationId)}` : ""}&disposition=attachment`,

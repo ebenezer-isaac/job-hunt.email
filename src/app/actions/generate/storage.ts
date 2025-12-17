@@ -30,6 +30,18 @@ export type StoredArtifact = {
     body?: string;
     toAddress?: string;
     changeSummary?: string;
+    generationId?: string;
+    versions?: Array<{
+      generationId: string;
+      content: string;
+      pageCount?: number | null;
+      status?: string;
+      message?: string;
+      createdAt?: string;
+      errorLog?: string;
+      errorLineNumbers?: number[];
+      errors?: Array<{ message: string; lineNumbers?: number[] }>;
+    }>;
   };
   generatedFile: {
     key: string;
@@ -39,37 +51,12 @@ export type StoredArtifact = {
   };
 };
 
-function slugify(value: string, fallback: string): string {
-  const trimmed = value.trim().toLowerCase();
-  if (!trimmed) {
-    return fallback;
-  }
-  const sanitized = trimmed.replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-  return sanitized || fallback;
-}
-
-function buildCvFilename(parsed: ParsedForm, userDisplayName?: string | null): string {
-  const company = slugify(parsed.companyName, "company");
-  const role = slugify(parsed.jobTitle, "role");
-  const candidate = userDisplayName ? slugify(userDisplayName, "") : "";
-  const namePrefix = candidate ? `${candidate}-` : "";
-  return `${namePrefix}${company}-${role}-cv.pdf`;
-}
-
-function extractPageCountFromMessage(message?: string): number | null {
-  if (!message) {
-    return null;
-  }
-  const match = message.match(/PDF has (\d+) page/);
-  return match ? Number(match[1]) : null;
-}
-
 export async function persistCvArtifact(
   cv: string,
   parsed: ParsedForm,
-  userId: string,
-  userDisplayName?: string | null,
+  _userDisplayName?: string,
 ): Promise<{ cv: string; result: { pageCount: number | null } }> {
+  void _userDisplayName;
   const svc = await getDocumentService();
   const targetPageCount = env.TARGET_PAGE_COUNT;
 

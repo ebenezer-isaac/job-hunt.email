@@ -17,6 +17,12 @@ export type FixCVPageCountInput = {
   jobDescription: string;
 };
 
+export type FixLatexErrorsAssistInput = {
+  latexSource: string;
+  errorSummary: string;
+  compilerLog: string;
+};
+
 export type GenerateCoverLetterInput = {
   jobDescription: string;
   companyName: string;
