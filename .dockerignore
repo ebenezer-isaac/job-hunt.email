@@ -13,7 +13,7 @@ firebase-debug.log
 # Secrets and env files
 .env*
 .tmp-env/
-cloudbuild.yaml
+infra/cloud-build/
 cloudbuild.tmp.yaml
 
 # Offline corpora / personal data

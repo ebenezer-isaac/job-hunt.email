@@ -30,6 +30,8 @@ steps:
         "us-central1-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:latest",
         "--secret",
         "id=env,src=.env.build",
+        "-f",
+        "infra/docker/Dockerfile",
         "-t",
         "us-central1-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:${_TAG}",
         "-t",

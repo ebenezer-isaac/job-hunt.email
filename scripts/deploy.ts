@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SERVICE_NAME = process.env.CLOUD_RUN_SERVICE ?? "job-hunt-email";
-const CLOUD_BUILD_FILE = process.env.CLOUD_BUILD_FILE ?? "cloudbuild.yaml";
+const CLOUD_BUILD_FILE = process.env.CLOUD_BUILD_FILE ?? "infra/cloud-build/cloudbuild.yaml";
 const ENV_FILE = process.env.DEPLOY_ENV_FILE ?? ".env.build";
 const GCLOUD_BIN = process.env.GCLOUD_BIN ?? (process.platform === "win32" ? "gcloud.cmd" : "gcloud");
 const USE_SHELL = process.platform === "win32";

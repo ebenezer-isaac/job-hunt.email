@@ -1,0 +1,263 @@
+{
+  "apiVersion": "serving.knative.dev/v1",
+  "kind": "Service",
+  "metadata": {
+    "annotations": {
+      "run.googleapis.com/client-name": "gcloud",
+      "run.googleapis.com/client-version": "548.0.0",
+      "run.googleapis.com/ingress": "all",
+      "run.googleapis.com/ingress-status": "all",
+      "run.googleapis.com/maxScale": "20",
+      "run.googleapis.com/operation-id": "a85b4a31-0d6a-4b0c-a4d7-d2efe23ab6f8",
+      "run.googleapis.com/urls": "[\"https://job-hunt-email-492737119236.us-central1.run.app\",\"https://job-hunt-email-xy5tsdoj5a-uc.a.run.app\"]",
+      "serving.knative.dev/creator": "492737119236-compute@developer.gserviceaccount.com",
+      "serving.knative.dev/lastModifier": "492737119236-compute@developer.gserviceaccount.com"
+    },
+    "creationTimestamp": "2025-11-20T19:11:31.250969Z",
+    "generation": 8,
+    "labels": {
+      "cloud.googleapis.com/location": "us-central1"
+    },
+    "name": "job-hunt-email",
+    "namespace": "492737119236",
+    "resourceVersion": "AAZEDpsUMuA",
+    "selfLink": "/apis/serving.knative.dev/v1/namespaces/492737119236/services/job-hunt-email",
+    "uid": "b5d76fb6-8b71-45b0-8842-091dfafbbbd9"
+  },
+  "spec": {
+    "template": {
+      "metadata": {
+        "annotations": {
+          "run.googleapis.com/client-name": "gcloud",
+          "run.googleapis.com/client-version": "548.0.0",
+          "run.googleapis.com/startup-cpu-boost": "true"
+        },
+        "labels": {
+          "client.knative.dev/nonce": "wessnzjkub",
+          "run.googleapis.com/startupProbeType": "Default"
+        }
+      },
+      "spec": {
+        "containerConcurrency": 80,
+        "containers": [
+          {
+            "env": [
+              {
+                "name": "NEXT_PUBLIC_APP_ENV",
+                "value": "production"
+              },
+              {
+                "name": "NEXT_PUBLIC_APP_URL",
+                "value": "https://job-hunt.email _TAG=0d47637-ts222450"
+              },
+              {
+                "name": "NEXT_PUBLIC_REPO_URL",
+                "value": "https://github.com/ebenezer-isaac/job-hunt.email"
+              },
+              {
+                "name": "APP_URL",
+                "value": "https://job-hunt.email _TAG=0d47637-ts222450"
+              },
+              {
+                "name": "LOG_LEVEL",
+                "value": "info"
+              },
+              {
+                "name": "NODE_ENV",
+                "value": "production"
+              },
+              {
+                "name": "GEMINI_API_KEY",
+                "valueFrom": {
+                  "secretKeyRef": {
+                    "key": "latest",
+                    "name": "GEMINI_API_KEY"
+                  }
+                }
+              },
+              {
+                "name": "APOLLO_API_KEY",
+                "valueFrom": {
+                  "secretKeyRef": {
+                    "key": "latest",
+                    "name": "APOLLO_API_KEY"
+                  }
+                }
+              },
+              {
+                "name": "FIREBASE_PROJECT_ID",
+                "valueFrom": {
+                  "secretKeyRef": {
+                    "key": "latest",
+                    "name": "FIREBASE_PROJECT_ID"
+                  }
+                }
+              },
+              {
+                "name": "FIREBASE_CLIENT_EMAIL",
+                "valueFrom": {
+                  "secretKeyRef": {
+                    "key": "latest",
+                    "name": "FIREBASE_CLIENT_EMAIL"
+                  }
+                }
+              },
+              {
+                "name": "FIREBASE_PRIVATE_KEY",
+                "valueFrom": {
+                  "secretKeyRef": {
+                    "key": "latest",
+                    "name": "FIREBASE_PRIVATE_KEY"
+                  }
+                }
+              },
+              {
+                "name": "FIREBASE_API_KEY",
+                "valueFrom": {
+                  "secretKeyRef": {
+                    "key": "latest",
+                    "name": "FIREBASE_API_KEY"
+                  }
+                }
+              },
+              {
+                "name": "FIREBASE_STORAGE_BUCKET",
+                "valueFrom": {
+                  "secretKeyRef": {
+                    "key": "latest",
+                    "name": "FIREBASE_STORAGE_BUCKET"
+                  }
+                }
+              },
+              {
+                "name": "FIREBASE_AUTH_COOKIE_SIGNATURE_KEYS",
+                "valueFrom": {
+                  "secretKeyRef": {
+                    "key": "latest",
+                    "name": "FIREBASE_AUTH_COOKIE_SIGNATURE_KEYS"
+                  }
+                }
+              },
+              {
+                "name": "ACCESS_CONTROL_INTERNAL_TOKEN",
+                "valueFrom": {
+                  "secretKeyRef": {
+                    "key": "latest",
+                    "name": "ACCESS_CONTROL_INTERNAL_TOKEN"
+                  }
+                }
+              },
+              {
+                "name": "CONTACT_EMAIL",
+                "valueFrom": {
+                  "secretKeyRef": {
+                    "key": "latest",
+                    "name": "CONTACT_EMAIL"
+                  }
+                }
+              },
+              {
+                "name": "NEXT_PUBLIC_CONTACT_EMAIL",
+                "valueFrom": {
+                  "secretKeyRef": {
+                    "key": "latest",
+                    "name": "CONTACT_EMAIL"
+                  }
+                }
+              },
+              {
+                "name": "NEXT_PUBLIC_FIREBASE_API_KEY",
+                "valueFrom": {
+                  "secretKeyRef": {
+                    "key": "latest",
+                    "name": "NEXT_PUBLIC_FIREBASE_API_KEY"
+                  }
+                }
+              },
+              {
+                "name": "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN",
+                "valueFrom": {
+                  "secretKeyRef": {
+                    "key": "latest",
+                    "name": "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN"
+                  }
+                }
+              },
+              {
+                "name": "NEXT_PUBLIC_FIREBASE_PROJECT_ID",
+                "valueFrom": {
+                  "secretKeyRef": {
+                    "key": "latest",
+                    "name": "NEXT_PUBLIC_FIREBASE_PROJECT_ID"
+                  }
+                }
+              }
+            ],
+            "image": "us-central1-docker.pkg.dev/job-hunt-0111/job-hunt-email/job-hunt-email:latest",
+            "ports": [
+              {
+                "containerPort": 8080,
+                "name": "http1"
+              }
+            ],
+            "resources": {
+              "limits": {
+                "cpu": "1000m",
+                "memory": "512Mi"
+              }
+            },
+            "startupProbe": {
+              "failureThreshold": 1,
+              "periodSeconds": 240,
+              "tcpSocket": {
+                "port": 8080
+              },
+              "timeoutSeconds": 240
+            }
+          }
+        ],
+        "serviceAccountName": "492737119236-compute@developer.gserviceaccount.com",
+        "timeoutSeconds": 300
+      }
+    },
+    "traffic": [
+      {
+        "latestRevision": true,
+        "percent": 100
+      }
+    ]
+  },
+  "status": {
+    "address": {
+      "url": "https://job-hunt-email-xy5tsdoj5a-uc.a.run.app"
+    },
+    "conditions": [
+      {
+        "lastTransitionTime": "2025-11-20T22:56:22.287072Z",
+        "status": "True",
+        "type": "Ready"
+      },
+      {
+        "lastTransitionTime": "2025-11-20T22:56:16.400900Z",
+        "status": "True",
+        "type": "ConfigurationsReady"
+      },
+      {
+        "lastTransitionTime": "2025-11-20T22:56:22.245524Z",
+        "status": "True",
+        "type": "RoutesReady"
+      }
+    ],
+    "latestCreatedRevisionName": "job-hunt-email-00007-h9x",
+    "latestReadyRevisionName": "job-hunt-email-00007-h9x",
+    "observedGeneration": 8,
+    "traffic": [
+      {
+        "latestRevision": true,
+        "percent": 100,
+        "revisionName": "job-hunt-email-00007-h9x"
+      }
+    ],
+    "url": "https://job-hunt-email-xy5tsdoj5a-uc.a.run.app"
+  }
+}

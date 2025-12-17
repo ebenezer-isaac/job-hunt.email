@@ -125,7 +125,7 @@ const utilitySections: CommandSection[] = [
     title: "Other helpers",
     entries: [
       {
-        command: "node test-fetch.js",
+        command: "node scripts/tools/test-fetch.js",
         description: "Sends a sample payload to /api/log using the ACCESS_CONTROL_INTERNAL_TOKEN.",
         notes: "Set the token in your shell before running.",
       },
