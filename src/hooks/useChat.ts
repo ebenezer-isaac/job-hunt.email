@@ -83,17 +83,36 @@ export function useChat() {
     }
 
     actions.setIsGenerating(currentSessionId ?? null, true);
-    if (currentSessionId) {
-      actions.setGeneratedDocuments(currentSessionId, null);
-    }
     reset();
 
     const generationId = createGenerationId();
     let sessionId: string | null = currentSessionId;
     let runRequestId: string | null = null;
 
-    let streamStarted = false;
     try {
+      const baseCompanyName = input.companyName.trim();
+      const baseJobTitle = input.jobTitle.trim();
+      const baseCompanyWebsite = input.companyWebsite?.trim() ?? "";
+      const baseContactName = input.contactName?.trim() ?? "";
+      const baseContactTitle = input.contactTitle?.trim() ?? "";
+      const baseContactEmail = input.contactEmail?.trim() ?? "";
+
+      const ensured = await ensureSession({
+        jobDescription: trimmedDescription || rawJobInput,
+        companyName: baseCompanyName || "Unknown company",
+        jobTitle: baseJobTitle || "Untitled role",
+        companyWebsite: baseCompanyWebsite,
+        contactName: baseContactName,
+        contactTitle: baseContactTitle,
+        contactEmail: baseContactEmail,
+      });
+
+      sessionId = ensured.sessionId;
+      actions.setIsGenerating(sessionId, true);
+      if (ensured.wasCreated) {
+        actions.selectSession(sessionId);
+      }
+
       const shouldProcessJobInput = trimmedDescription.length > 0;
       let normalized: NormalizedJobInput | null = null;
       if (shouldProcessJobInput) {
@@ -116,14 +135,14 @@ export function useChat() {
         return trimmedExtracted;
       };
 
-      const resolvedCompanyName = preferManualValue(input.companyName, normalized?.companyName) || input.companyName.trim();
-      const resolvedJobTitle = preferManualValue(input.jobTitle, normalized?.jobTitle) || input.jobTitle.trim();
-      const resolvedCompanyWebsite = preferManualValue(input.companyWebsite ?? "");
-      const contactName = preferManualValue(input.contactName ?? "");
-      const contactTitle = preferManualValue(input.contactTitle ?? "");
+      const resolvedCompanyName = preferManualValue(baseCompanyName, normalized?.companyName) || baseCompanyName;
+      const resolvedJobTitle = preferManualValue(baseJobTitle, normalized?.jobTitle) || baseJobTitle;
+      const resolvedCompanyWebsite = preferManualValue(baseCompanyWebsite);
+      const contactName = preferManualValue(baseContactName);
+      const contactTitle = preferManualValue(baseContactTitle);
       const normalizedEmails = normalized?.emailAddresses ?? [];
       const detectedEmail = normalizedEmails[0] ?? "";
-      const contactEmail = preferManualValue(input.contactEmail ?? "", detectedEmail);
+      const contactEmail = preferManualValue(baseContactEmail, detectedEmail);
       const resolvedJobDescription =
         normalized?.jobDescription?.trim() ||
         trimmedDescription ||
@@ -142,23 +161,6 @@ export function useChat() {
         }
         return rawJobInput;
       })();
-
-      const ensured = await ensureSession({
-        jobDescription: resolvedJobDescription,
-        companyName: resolvedCompanyName,
-        jobTitle: resolvedJobTitle,
-        companyWebsite: resolvedCompanyWebsite,
-        contactName,
-        contactTitle,
-        contactEmail,
-      });
-
-      sessionId = ensured.sessionId;
-      actions.setIsGenerating(sessionId, true);
-      if (ensured.wasCreated) {
-        actions.selectSession(sessionId);
-      }
-      actions.setGeneratedDocuments(sessionId, null);
 
       const requestTimestamp = new Date().toISOString();
       actions.touchSessionTimestamp(sessionId, requestTimestamp);
@@ -284,10 +286,23 @@ export function useChat() {
       });
 
       if (!response.ok || !response.body) {
-        throw new Error("Streaming response not available");
+        const errorText = await response.text().catch(() => "");
+        const message = errorText || "Unable to start generation. Please try again.";
+        if (sessionId) {
+          actions.setSessionStatus(sessionId, "failed");
+          actions.appendChatMessage(sessionId, {
+            id: createMessageId(sessionId, "error"),
+            role: "system",
+            content: `Generation failed: ${message}`,
+            timestamp: new Date().toISOString(),
+            level: "error",
+            metadata: { kind: "summary" as ChatMessageKind, generationId },
+          });
+        }
+        toast.error(`Generation failed: ${message}`);
+        return null;
       }
 
-      streamStarted = true;
       await consume(response.body, {
         onLine(line) {
           if (!sessionId) {
@@ -335,7 +350,7 @@ export function useChat() {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const targetSessionId = sessionId ?? currentSessionId;
-      if (targetSessionId && streamStarted) {
+      if (targetSessionId) {
         actions.setSessionStatus(targetSessionId, "failed");
         actions.appendChatMessage(targetSessionId, {
           id: createMessageId(targetSessionId, "error"),

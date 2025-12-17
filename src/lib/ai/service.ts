@@ -2,13 +2,14 @@ import "server-only";
 
 import { createDebugLogger } from "@/lib/debug-logger";
 
-import { ModelClient } from "./model-client";
+import { ModelClient, type RetryHandler } from "./model-client";
 import { createDocumentTasks } from "./tasks/document-tasks";
 import { createJobIngestionTasks } from "./tasks/job-ingestion-tasks";
 import { createOutreachTasks } from "./tasks/outreach-tasks";
 import { createResearchTasks } from "./tasks/research-tasks";
 import type {
   FixCVPageCountInput,
+  FixLatexErrorsAssistInput,
   GenerateCVAdvancedInput,
   GenerateCoverLetterInput,
   GenericColdEmailInput,
@@ -41,38 +42,42 @@ export class AIService {
     return this.jobs.extractEmailAddresses(jobDescription);
   }
 
-  generateCVAdvanced(input: GenerateCVAdvancedInput) {
-    return this.documents.generateCVAdvanced(input);
+  generateCVAdvanced(input: GenerateCVAdvancedInput, options?: { onRetry?: RetryHandler }) {
+    return this.documents.generateCVAdvanced(input, options);
   }
 
-  fixCVPageCount(input: FixCVPageCountInput) {
-    return this.documents.fixCVPageCount(input);
+  fixCVPageCount(input: FixCVPageCountInput, options?: { onRetry?: RetryHandler }) {
+    return this.documents.fixCVPageCount(input, options);
   }
 
-  generateCoverLetterAdvanced(input: GenerateCoverLetterInput) {
-    return this.documents.generateCoverLetter(input);
+  fixLatexErrorsAssist(input: FixLatexErrorsAssistInput, options?: { onRetry?: RetryHandler }) {
+    return this.documents.fixLatexErrorsAssist(input, options);
   }
 
-  refineContentAdvanced(input: RefineContentInput) {
-    return this.documents.refineContent(input);
+  generateCoverLetterAdvanced(input: GenerateCoverLetterInput, options?: { onRetry?: RetryHandler }) {
+    return this.documents.generateCoverLetter(input, options);
   }
 
-  generateCVChangeSummary(originalCV: string, newCV: string) {
-    return this.documents.summarizeCvChanges(originalCV, newCV);
+  refineContentAdvanced(input: RefineContentInput, options?: { onRetry?: RetryHandler }) {
+    return this.documents.refineContent(input, options);
   }
 
-  generatePersonalizedColdEmail(input: PersonalizedColdEmailInput) {
-    return this.outreach.generatePersonalizedColdEmail(input);
+  generateCVChangeSummary(originalCV: string, newCV: string, options?: { onRetry?: RetryHandler }) {
+    return this.documents.summarizeCvChanges(originalCV, newCV, options);
   }
 
-  generateGenericColdEmail(input: GenericColdEmailInput) {
-    return this.outreach.generateGenericColdEmail(input);
+  generatePersonalizedColdEmail(input: PersonalizedColdEmailInput, options?: { onRetry?: RetryHandler }) {
+    return this.outreach.generatePersonalizedColdEmail(input, options);
   }
 
-  async parseColdOutreachInput(userInput: string) {
+  generateGenericColdEmail(input: GenericColdEmailInput, options?: { onRetry?: RetryHandler }) {
+    return this.outreach.generateGenericColdEmail(input, options);
+  }
+
+  async parseColdOutreachInput(userInput: string, options?: { onRetry?: RetryHandler }) {
     this.logger.step("Parsing cold outreach input", { inputLength: userInput.length });
     try {
-      const result = await this.outreach.parseColdOutreachInput(userInput);
+      const result = await this.outreach.parseColdOutreachInput(userInput, options);
       this.logger.step("Parsed cold outreach input", result);
       return result;
     } catch (error) {
@@ -81,12 +86,12 @@ export class AIService {
     }
   }
 
-  processJobURL(url: string) {
-    return this.jobs.processJobURL(url);
+  processJobURL(url: string, options?: { onRetry?: RetryHandler }) {
+    return this.jobs.processJobURL(url, options);
   }
 
-  processJobText(jobText: string) {
-    return this.jobs.processJobText(jobText);
+  processJobText(jobText: string, options?: { onRetry?: RetryHandler }) {
+    return this.jobs.processJobText(jobText, options);
   }
 
   researchCompanyAndIdentifyPeople(input: ResearchCompanyInput) {

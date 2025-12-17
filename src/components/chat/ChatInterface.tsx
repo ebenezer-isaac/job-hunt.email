@@ -72,7 +72,6 @@ export function ChatInterface() {
   const handleSuccessfulResult = (result: ChatResult) => {
     applyResultPayload(result);
     setRetryAvailable(false);
-    setJobDescription("");
     lastPayloadRef.current = null;
     setHasGeneratedInSession(true);
   };

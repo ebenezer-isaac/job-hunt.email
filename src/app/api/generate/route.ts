@@ -36,8 +36,11 @@ export async function POST(request: NextRequest) {
         requestId: requestId ?? null,
         error,
       });
-      const userMessage = "Generation failed due to an internal error.";
-      return new Response(userMessage, { status: 500 });
+      const userMessage = error instanceof Error ? error.message : "Generation failed due to an internal error.";
+      return new Response(userMessage, {
+        status: 500,
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      });
     }
   });
 }

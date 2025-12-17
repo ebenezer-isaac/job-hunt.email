@@ -43,6 +43,20 @@ const FORCE_REDACTION_LENGTH = 15000;
 const KEYWORD_REDACTION_LENGTH = 1200;
 const MULTILINE_THRESHOLD = 80;
 const LOG_ARRAY_LIMIT = 25;
+const METADATA_REDACTION_ALLOWLIST = new Set([
+  "cvfulllatex",
+  "cvgenerations",
+  "coverlettergenerations",
+  "coverletter",
+  "coldemail",
+  "artifactpreviews",
+  "cvpreview",
+  "cvchangesummary",
+  "coverletterpreview",
+  "coldemailpreview",
+  "coldemailsubjectpreview",
+  "coldemailbodypreview",
+]);
 
 type InternalOptions = {
   mode: "log" | "metadata";
@@ -126,8 +140,19 @@ function sanitizeArray(values: unknown[], path: string[], options: InternalOptio
 }
 
 function sanitizeString(value: string, path: string[], options: InternalOptions): string {
+  // Metadata needs to carry the full artifact content (CV LaTeX, cover letters, cold emails).
+  // Skip redaction entirely for metadata mode and only enforce the length cap to keep Firestore payloads bounded.
+  if (options.mode === "metadata") {
+    const limit = options.maxStringLength;
+    if (value.length > limit) {
+      return `${value.slice(0, limit)}... [truncated ${value.length - limit} chars]`;
+    }
+    return value;
+  }
+
   const key = (path[path.length - 1] ?? "").toLowerCase();
-  const reason = resolveRedactionReason(key, value);
+  const skipRedaction = isMetadataRedactionAllowlisted(path, options);
+  const reason = skipRedaction ? null : resolveRedactionReason(key, value);
   if (reason) {
     return buildRedactionLabel(reason, value.length, path);
   }
@@ -158,6 +183,13 @@ function resolveRedactionReason(key: string, value: string): string | null {
     return "multiline";
   }
   return null;
+}
+
+function isMetadataRedactionAllowlisted(path: string[], options: InternalOptions): boolean {
+  if (options.mode !== "metadata") {
+    return false;
+  }
+  return path.some((segment) => METADATA_REDACTION_ALLOWLIST.has(segment.toLowerCase()));
 }
 
 function matcherLabel(key: string): string {

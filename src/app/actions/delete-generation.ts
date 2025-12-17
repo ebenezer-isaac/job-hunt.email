@@ -17,12 +17,25 @@ export async function deleteGenerationAction(input: { sessionId: string; generat
     userId: tokens.decodedToken.uid,
   });
 
-  const { updated, deletedFileKeys } = await sessionRepository.deleteGeneration(
-    input.sessionId,
-    input.generationId,
-    tokens.decodedToken.uid,
-    input.messageIds,
-  );
+  let updated;
+  let deletedFileKeys: string[] = [];
+  try {
+    const result = await sessionRepository.deleteGeneration(
+      input.sessionId,
+      input.generationId,
+      tokens.decodedToken.uid,
+      input.messageIds,
+    );
+    updated = result.updated;
+    deletedFileKeys = result.deletedFileKeys;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("not found")) {
+      logger.warn("Generation delete requested for missing session", { sessionId: input.sessionId, generationId: input.generationId });
+      throw new Error("Session not found or already deleted");
+    }
+    throw error;
+  }
 
   if (deletedFileKeys.length) {
     await Promise.allSettled(

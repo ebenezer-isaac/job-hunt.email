@@ -1,25 +1,32 @@
-import { MODEL_TYPES, type ModelClient } from "../model-client";
+import { MODEL_TYPES, type ModelClient, type RetryHandler } from "../model-client";
 import { renderPrompt } from "../prompts";
 import { createDebugLogger } from "@/lib/debug-logger";
 
 const logger = createDebugLogger("job-ingestion-tasks");
 
+type TaskOptions = { onRetry?: RetryHandler };
+
 export function createJobIngestionTasks(client: ModelClient) {
   return {
-    async extractJobDescription(rawContent: string): Promise<string> {
+    async extractJobDescription(rawContent: string, options?: TaskOptions): Promise<string> {
       logger.step("Extracting job description", { rawContentLength: rawContent.length });
       const truncated = rawContent.length > 10000 ? `${rawContent.slice(0, 10000)} ...(truncated)` : rawContent;
       const prompt = renderPrompt("extractJobDescription", { rawContent: truncated });
-      const result = await client.generateWithRetry(prompt, MODEL_TYPES.FLASH);
+      const result = await client.generateWithRetry(prompt, MODEL_TYPES.FLASH, undefined, options?.onRetry);
       logger.info("Job description extracted", { length: result.length });
       return result;
     },
 
-    async extractJobDetails(jobDescription: string): Promise<{ companyName: string; jobTitle: string }> {
+    async extractJobDetails(jobDescription: string, options?: TaskOptions): Promise<{ companyName: string; jobTitle: string }> {
       logger.step("Extracting job details");
       const prompt = renderPrompt("extractJobDetails", { jobDescription });
       try {
-        const result = await client.generateJsonWithRetry<{ companyName: string; jobTitle: string }>(prompt, MODEL_TYPES.FLASH);
+        const result = await client.generateJsonWithRetry<{ companyName: string; jobTitle: string }>(
+          prompt,
+          MODEL_TYPES.FLASH,
+          undefined,
+          options?.onRetry,
+        );
         logger.info("Job details extracted", result);
         return result;
       } catch (error) {
@@ -36,7 +43,7 @@ export function createJobIngestionTasks(client: ModelClient) {
       return emails;
     },
 
-    async processJobURL(url: string): Promise<Record<string, unknown>> {
+    async processJobURL(url: string, options?: TaskOptions): Promise<Record<string, unknown>> {
       logger.step("Processing job URL", { url });
       const prompt = renderPrompt("processJobURL", { url });
       try {
@@ -44,7 +51,8 @@ export function createJobIngestionTasks(client: ModelClient) {
           prompt,
           MODEL_TYPES.FLASH,
           // @ts-expect-error - googleSearch is not yet in the Tool type definition
-          [{ googleSearch: {} }]
+          [{ googleSearch: {} }],
+          options?.onRetry,
         );
         logger.info("Parsed job data from URL", { url });
         return jobData;
@@ -54,11 +62,16 @@ export function createJobIngestionTasks(client: ModelClient) {
       }
     },
 
-    async processJobText(jobText: string): Promise<Record<string, unknown>> {
+    async processJobText(jobText: string, options?: TaskOptions): Promise<Record<string, unknown>> {
       logger.step("Processing job text", { length: jobText.length });
       const prompt = renderPrompt("processJobText", { jobText });
       try {
-        const jobData = await client.generateJsonWithRetry<Record<string, unknown>>(prompt, MODEL_TYPES.FLASH);
+        const jobData = await client.generateJsonWithRetry<Record<string, unknown>>(
+          prompt,
+          MODEL_TYPES.FLASH,
+          undefined,
+          options?.onRetry,
+        );
         logger.info("Parsed job data from text");
         return jobData;
       } catch (error) {

@@ -6,14 +6,16 @@ import { toast } from "sonner";
 import { saveContentAction } from "@/app/actions/save-content";
 import { useSessionStore, type SessionStoreState } from "@/store/session-store";
 
-const TEXT_DOCS: Record<DocKey, { label: string; helper: string }> = {
+const TEXT_DOCS: Record<DocKey, { label: string; helper: string; placeholder: string }> = {
   original_cv: {
     label: "Original 2-page CV",
     helper: "Paste LaTeX (.tex) source exactly as compiled.",
+    placeholder: "Paste the full LaTeX (.tex) CV here",
   },
   extensive_cv: {
     label: "Extensive CV Context",
     helper: "Provide supporting plain text or Markdown context.",
+    placeholder: "Paste supporting context here",
   },
 };
 
@@ -120,11 +122,20 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             key={docType}
             label={TEXT_DOCS[docType].label}
             helper={TEXT_DOCS[docType].helper}
-            value={docType === "original_cv" ? sourceDocuments.originalCV : sourceDocuments.extensiveCV}
+            value={(() => {
+              switch (docType) {
+                case "original_cv":
+                  return sourceDocuments.originalCV;
+                case "extensive_cv":
+                  return sourceDocuments.extensiveCV;
+                default:
+                  return "";
+              }
+            })()}
             status={saveState[docType]}
             onChange={(value) => handleChange(docType, value)}
             onBlur={() => debouncedSave.flush?.()}
-            placeholder={docType === "original_cv" ? "Paste the full LaTeX (.tex) CV here" : "Paste supporting context here"}
+            placeholder={TEXT_DOCS[docType].placeholder}
           />
         ))}
       </div>

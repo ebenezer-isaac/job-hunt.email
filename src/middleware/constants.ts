@@ -1,0 +1,11 @@
+import { LOGIN_PATH, LOGOUT_PATH, PUBLIC_PAGE_PATHS, REFRESH_TOKEN_PATH } from "@/lib/auth-config";
+
+export const REDIRECT_WHITELIST = [
+  ...PUBLIC_PAGE_PATHS,
+  LOGIN_PATH,
+  LOGOUT_PATH,
+  REFRESH_TOKEN_PATH,
+  "/guide",
+];
+
+export const ACCESS_DECISION_TTL_MS = 60_000;

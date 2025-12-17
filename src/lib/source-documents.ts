@@ -7,6 +7,7 @@ import { createDebugLogger } from "@/lib/debug-logger";
 export type SourceDocumentType =
   | "original_cv"
   | "extensive_cv"
+  | "cover_letter"
   | "cv_strategy"
   | "cover_letter_strategy"
   | "cold_email_strategy"
@@ -23,6 +24,7 @@ export type SourceDocumentRecord = {
 export type SourceDocumentSnapshot = {
   originalCV: string;
   extensiveCV: string;
+  coverLetter: string;
   cvStrategy: string;
   coverLetterStrategy: string;
   coldEmailStrategy: string;
@@ -98,6 +100,7 @@ export async function getSourceDocumentsForUser(userId: string): Promise<SourceD
   return {
     originalCV: pick("original_cv"),
     extensiveCV: pick("extensive_cv"),
+    coverLetter: pick("cover_letter"),
     cvStrategy: pick("cv_strategy"),
     coverLetterStrategy: pick("cover_letter_strategy"),
     coldEmailStrategy: pick("cold_email_strategy"),

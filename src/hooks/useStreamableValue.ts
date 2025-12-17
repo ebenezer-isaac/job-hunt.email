@@ -14,6 +14,18 @@ export type ArtifactPayload = {
   body?: string;
   toAddress?: string;
   changeSummary?: string;
+  generationId?: string;
+  versions?: Array<{
+    generationId: string;
+    content: string;
+    pageCount?: number | null;
+    status?: string;
+    message?: string;
+    createdAt?: string;
+    errorLog?: string;
+    errorLineNumbers?: number[];
+    errors?: Array<{ message: string; lineNumbers?: number[] }>;
+  }>;
 };
 
 export type GenerationArtifacts = {
